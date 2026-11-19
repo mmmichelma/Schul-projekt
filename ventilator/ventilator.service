@@ -1,0 +1,28 @@
+# Autostart beim Booten (Kannkriterium)
+#
+# Installation auf dem Pi:
+#   sudo cp ventilator.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ventilator
+# Status / Log ansehen:
+#   systemctl status ventilator
+#   journalctl -u ventilator -f
+#
+# Pfad und Benutzer ggf. anpassen (hier: /home/pi/ventilator, Benutzer pi).
+
+[Unit]
+Description=Personenverfolgender Ventilator
+After=pigpiod.service
+Wants=pigpiod.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/ventilator
+ExecStart=/usr/bin/python3 /home/pi/ventilator/main.py --log /home/pi/ventilator/ventilator.log
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
