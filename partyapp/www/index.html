@@ -3,343 +3,716 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Konfetti – Partyspiele</title>
+<title>Konfetti Partyspiele</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
 <style>
+  /* Layout: eine Spalte, Kartenstapel; Startseite = Kachelraster nach Spielgruppen */
   :root {
-    --bg: #14111f; --card: #221d33; --card2: #2d2642; --text: #f5f2ff; --muted: #a59fc0;
-    --bluff: #8b5cf6; --fragen: #ec4899; --tempo: #f97316; --tool: #14b8a6; --danger: #ef4444; --ok: #22c55e;
+    color-scheme: dark;
+    --bg: #110d1c; --bg2: #1a1430; --surface: #221a3a; --surface2: #2e2450; --line: rgba(255,255,255,.08);
+    --text: #fbf8ff; --muted: #b3a9d3;
+    --bluff: #7c4dff; --bluff2: #b388ff;
+    --fragen: #ff3d7f; --fragen2: #ff8fb1;
+    --tempo: #ff7a1a; --tempo2: #ffc046;
+    --tool: #00bfa5; --tool2: #64ffda;
+    --ok: #22c55e; --bad: #ef4444; --gold: #ffd54a;
+    --display: "Fredoka", "Baloo 2", system-ui, sans-serif;
+    --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --r: 24px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; }
-  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 120px; }
-  h1 { font-size: 2.2rem; margin: 8px 0 4px; letter-spacing: -0.02em; }
-  h2 { margin: 0 0 12px; }
-  .sub { color: var(--muted); margin: 0 0 20px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .tile { border: 0; border-radius: 18px; padding: 18px 14px; color: #fff; text-align: left; cursor: pointer; font: inherit; min-height: 110px; display: flex; flex-direction: column; justify-content: space-between; }
-  .tile .e { font-size: 2rem; }
-  .tile b { font-size: 1.05rem; }
-  .tile small { opacity: .85; font-size: .8rem; }
-  .section-title { margin: 24px 0 10px; color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
-  .btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 16px; font: inherit; font-weight: 700; font-size: 1.05rem; cursor: pointer; background: var(--bluff); color: #fff; margin-top: 10px; }
-  .btn.sec { background: var(--card2); }
-  .btn.ok { background: var(--ok); } .btn.bad { background: var(--danger); }
-  .row { display: flex; gap: 10px; } .row .btn { flex: 1; }
-  .card { background: var(--card); border-radius: 22px; padding: 28px 22px; text-align: center; min-height: 240px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
-  .big { font-size: 1.9rem; font-weight: 800; line-height: 1.25; }
-  .huge { font-size: 4rem; font-weight: 900; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0; color: var(--text); font-family: var(--body); font-size: 16px;
+    background: var(--bg);
+    background-image: radial-gradient(60rem 30rem at 110% -10%, rgba(124,77,255,.28), transparent 60%),
+                      radial-gradient(40rem 30rem at -20% 30%, rgba(255,61,127,.16), transparent 60%);
+    background-attachment: fixed;
+    user-select: none; -webkit-user-select: none;
+  }
+  main { max-width: 560px; margin: 0 auto; padding-block: 18px 120px;
+         padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .screen { animation: rise .35s cubic-bezier(.2,.8,.2,1); }
+  @keyframes rise { from { opacity: .4; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+  h1, h2, .big, .huge, .tile b, .btn { font-family: var(--display); }
+  h2 { font-size: 1.7rem; margin: 4px 0 6px; text-wrap: balance; }
+  p { line-height: 1.5; }
   .muted { color: var(--muted); }
+
+  /* Hero */
+  .hero { position: relative; padding: 18px 0 6px; }
+  .hero h1 { font-size: 3.1rem; line-height: 1; margin: 0; letter-spacing: -.01em;
+    background: linear-gradient(90deg, var(--gold), var(--fragen2) 45%, var(--bluff2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { margin: 8px 0 0; color: var(--muted); font-weight: 700; }
+  #confetti { position: absolute; inset: -18px -16px 0; width: calc(100% + 32px); height: calc(100% + 18px); pointer-events: none; }
+  .who { margin-top: 14px; display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line);
+         border-radius: 18px; padding: 10px 12px; cursor: pointer; width: 100%; color: inherit; font: inherit; text-align: left; }
+  .avatars { display: flex; }
+  .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .8rem;
+        border: 2px solid var(--surface); margin-left: -8px; color: #1b1030; }
+  .avatars .av:first-child { margin-left: 0; }
+  .who span { flex: 1; min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who em { font-style: normal; color: var(--muted); font-size: .9rem; }
+
+  /* Filter */
+  .filters { display: flex; gap: 8px; overflow-x: auto; margin: 18px -16px 4px; padding: 2px 16px 6px; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .fchip { flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px;
+           padding: 9px 15px; font: 800 .9rem var(--body); cursor: pointer; }
+  .fchip.on { background: var(--text); color: var(--bg); }
+
+  .section-title { margin: 22px 2px 10px; display: flex; align-items: baseline; justify-content: space-between; }
+  .section-title b { font-family: var(--display); font-size: 1.2rem; }
+  .section-title small { color: var(--muted); font-weight: 700; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tile { position: relative; overflow: hidden; border: 0; border-radius: var(--r); padding: 14px; color: #fff; text-align: left; cursor: pointer;
+          font: inherit; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
+          background: linear-gradient(150deg, var(--c2), var(--c1) 65%); box-shadow: 0 10px 24px -12px var(--c1), inset 0 1px 0 rgba(255,255,255,.25);
+          transition: transform .15s; }
+  .tile:active { transform: scale(.96); }
+  .tile::after { content: ""; position: absolute; width: 120px; height: 120px; right: -40px; bottom: -50px; border-radius: 50%; background: rgba(255,255,255,.12); }
+  .tile .e { width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; font-size: 1.7rem; background: rgba(255,255,255,.22); }
+  .tile b { font-size: 1.15rem; font-weight: 600; line-height: 1.15; display: block; }
+  .tile small { opacity: .92; font-size: .8rem; font-weight: 700; display: block; margin-top: 3px; line-height: 1.3; }
+  .tile .badge { position: absolute; top: 12px; right: 12px; font-size: .7rem; font-weight: 800; background: rgba(0,0,0,.22); padding: 4px 8px; border-radius: 999px; }
+  .tile.new .badge { background: var(--gold); color: #3a2400; }
+
+  /* Buttons */
+  .btn { display: block; width: 100%; border: 0; border-radius: 18px; padding: 16px; font-weight: 600; font-size: 1.15rem; cursor: pointer;
+         background: linear-gradient(150deg, var(--c2, var(--bluff2)), var(--c1, var(--bluff))); color: #fff; margin-top: 12px;
+         box-shadow: 0 10px 22px -12px var(--c1, var(--bluff)); transition: transform .12s; }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .5; }
+  .btn.sec { background: var(--surface2); box-shadow: none; }
+  .btn.ok { background: var(--ok); box-shadow: none; } .btn.bad { background: var(--bad); box-shadow: none; }
+  .row { display: flex; gap: 10px; } .row .btn { flex: 1; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  /* Kopfzeile in Spielen */
+  .top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .back { width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 1.3rem; cursor: pointer; flex: none; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-weight: 800;
+          background: color-mix(in srgb, var(--c1, var(--bluff)) 25%, transparent); color: var(--c2, var(--bluff2)); }
+
+  /* Karten */
+  .card { position: relative; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; padding: 30px 22px;
+          text-align: center; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;
+          box-shadow: 0 24px 40px -24px rgba(0,0,0,.8); }
+  .card.color { background: linear-gradient(160deg, var(--c2), var(--c1) 70%); border: 0; }
+  .card.color .muted { color: rgba(255,255,255,.82); }
+  .card.flip { animation: flip .4s ease; }
+  @keyframes flip { from { transform: perspective(800px) rotateY(80deg); opacity: .3; } to { transform: none; opacity: 1; } }
+  .card p { margin: 0; max-width: 34ch; }
+  .big { font-size: 1.95rem; font-weight: 600; line-height: 1.2; text-wrap: balance; }
+  .huge { font-size: 4.2rem; line-height: 1; }
+  .label { text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 800; }
+  .rules { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 6px 16px; margin: 6px 0 4px; }
+  .rules li { margin: 10px 0; line-height: 1.45; }
+  .rules ol, .rules ul { padding-left: 20px; margin: 8px 0; }
+
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-  .chip { background: var(--card2); border-radius: 999px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 8px; }
-  .chip button { background: none; border: 0; color: var(--muted); font-size: 1rem; cursor: pointer; padding: 0; }
-  .chip.sel { background: var(--bluff); }
-  input { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid var(--card2); background: var(--card); color: var(--text); font: inherit; }
-  .back { background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; padding: 0 0 12px; }
-  .players-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: space-between; align-items: center; }
-  .players-bar span { color: var(--muted); font-size: .9rem; }
-  .players-bar button { background: var(--card2); color: var(--text); border: 0; border-radius: 10px; padding: 10px 14px; font: inherit; cursor: pointer; }
-  .forbidden { list-style: none; padding: 0; margin: 8px 0 0; color: #fca5a5; font-weight: 700; }
-  .forbidden li { padding: 4px 0; text-decoration: line-through; }
-  .score { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 12px; }
-  .boom { animation: shake .4s infinite; background: var(--danger) !important; }
-  @keyframes shake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-8px) } 75% { transform: translateX(8px) } }
-  .pulse { animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { transform: scale(1.08) } }
-  .wheel-wrap { position: relative; width: 280px; height: 280px; margin: 10px auto; }
-  .wheel { width: 100%; height: 100%; border-radius: 50%; transition: transform 4s cubic-bezier(.17,.67,.2,1); }
-  .pointer { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); font-size: 2rem; }
+  .chip { background: var(--surface2); border: 0; color: var(--text); border-radius: 999px; padding: 10px 14px; display: inline-flex; align-items: center; gap: 8px; font: 700 1rem var(--body); cursor: pointer; }
+  .chip .x { color: var(--muted); }
+  input { width: 100%; padding: 16px; border-radius: 16px; border: 2px solid var(--surface2); background: var(--surface); color: var(--text); font: 700 1.05rem var(--body); user-select: text; -webkit-user-select: text; }
+  input:focus { border-color: var(--bluff2); outline: none; }
+  .hint { color: var(--tempo2); font-weight: 800; }
+
+  .bar { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: center;
+         padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+         background: linear-gradient(transparent, var(--bg) 40%); padding-top: 30px; pointer-events: none; }
+  .bar .btn { max-width: 528px; pointer-events: auto; margin: 0; }
+
+  .score { display: flex; justify-content: space-between; align-items: center; font-weight: 800; margin-bottom: 12px; gap: 10px; }
+  .timer { font-family: var(--display); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+  .progress { height: 8px; border-radius: 99px; background: var(--surface2); overflow: hidden; margin-bottom: 14px; }
+  .progress i { display: block; height: 100%; background: linear-gradient(90deg, var(--c2), var(--c1)); transition: width .25s linear; }
+  .forbidden { list-style: none; padding: 14px 18px; margin: 6px 0 0; border-radius: 16px; background: rgba(239,68,68,.14); width: 100%; }
+  .forbidden li { padding: 3px 0; color: #fecaca; font-weight: 800; font-size: 1.1rem; }
+  .boom { animation: shake .4s infinite; background: radial-gradient(circle, #ffb300, var(--bad) 70%) !important; border: 0; }
+  @keyframes shake { 0%,100% { transform: translateX(0) rotate(0) } 25% { transform: translateX(-8px) rotate(-2deg) } 75% { transform: translateX(8px) rotate(2deg) } }
+  .pulse { animation: pulse .5s; }
+  @keyframes pulse { 50% { transform: scale(1.18) } }
+  .list { display: grid; gap: 8px; width: 100%; text-align: left; }
+  .list div { background: rgba(255,255,255,.07); border-radius: 14px; padding: 12px 14px; }
+  .list b { font-family: var(--display); font-weight: 600; }
+  .steps { font-weight: 800; color: var(--muted); }
+
+  .wheel-wrap { position: relative; width: min(300px, 82vw); aspect-ratio: 1; max-width: 100%; margin: 6px auto 14px; }
+  .wheel { container-type: size; width: 100%; height: 100%; border-radius: 50%; transition: transform 4.2s cubic-bezier(.12,.7,.15,1); box-shadow: 0 0 0 8px var(--surface), 0 20px 50px -20px #000; }
+  .wheel-hub { position: absolute; inset: 42%; border-radius: 50%; background: var(--text); box-shadow: 0 4px 10px rgba(0,0,0,.4); }
+  .pointer { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border: 16px solid transparent; border-top: 28px solid var(--gold); z-index: 2; filter: drop-shadow(0 3px 3px rgba(0,0,0,.5)); }
+  .dice { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .die { width: 84px; height: 84px; border-radius: 20px; background: #fff; color: #1b1030; display: grid; place-items: center; font: 700 2.6rem var(--display); box-shadow: inset 0 -6px 0 #d9d0ef; }
+  .roll { animation: roll .5s ease; }
+  @keyframes roll { 0% { transform: rotate(0) scale(.8) } 60% { transform: rotate(320deg) scale(1.1) } 100% { transform: rotate(360deg) scale(1) } }
+  .coin { width: 150px; height: 150px; border-radius: 50%; display: grid; place-items: center; font: 700 1.3rem var(--display); color: #4a3000;
+          background: radial-gradient(circle at 35% 30%, #fff3b0, var(--gold) 45%, #c79100); box-shadow: inset 0 0 0 8px rgba(0,0,0,.08); }
+  .coinflip { animation: coin .9s ease; }
+  @keyframes coin { 0% { transform: rotateX(0) } 100% { transform: rotateX(1800deg) } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <main id="app"></main>
-<div class="players-bar" id="bar"></div>
 
 <script>
-// ---------- Inhalte (eigene Beispieldaten) ----------
+// ================= Inhalte =================
 const DATA = {
   impostor: {
-    'Essen': ['Pizza','Sushi','Pommes','Lasagne','Döner','Pfannkuchen','Spaghetti','Brezel','Erdbeere','Popcorn'],
-    'Orte': ['Schwimmbad','Flughafen','Bibliothek','Zahnarzt','Kino','Zeltlager','Bäckerei','Turnhalle','Strand','Museum'],
-    'Tiere': ['Pinguin','Giraffe','Hamster','Krokodil','Eule','Delfin','Faultier','Kuh','Biene','Oktopus'],
-    'Schule': ['Pausenhof','Mathearbeit','Klassenfahrt','Hausmeister','Tafel','Zeugnis','Mensa','Wandertag','Referat','Sportunterricht']
+    'Essen': ['Pizza','Sushi','Pommes','Lasagne','Döner','Pfannkuchen','Spaghetti','Brezel','Erdbeere','Popcorn','Burger','Waffel','Rührei','Kartoffelsalat'],
+    'Orte': ['Schwimmbad','Flughafen','Bibliothek','Zahnarzt','Kino','Zeltlager','Bäckerei','Turnhalle','Strand','Museum','Freizeitpark','Bahnhof','Zoo','Supermarkt'],
+    'Tiere': ['Pinguin','Giraffe','Hamster','Krokodil','Eule','Delfin','Faultier','Kuh','Biene','Oktopus','Känguru','Flamingo','Igel','Hai'],
+    'Schule': ['Pausenhof','Mathearbeit','Klassenfahrt','Hausmeister','Tafel','Zeugnis','Mensa','Wandertag','Referat','Sportunterricht','Elternabend','Schulbus'],
+    'Freizeit': ['Trampolin','Karaoke','Zelten','Bowling','Skateboard','Videospiel','Picknick','Angeln','Schlittschuh','Escape-Room'],
+    'Berufe': ['Feuerwehr','Pilotin','Koch','Ärztin','Polizist','Friseur','Lehrerin','Astronaut','Gärtner','Tierärztin']
   },
+  orte: [
+    ['Krankenhaus',['Ärztin','Patient','Pfleger','Besucherin','Chirurg']], ['Flugzeug',['Pilotin','Passagier','Flugbegleiter','Baby','Kopilot']],
+    ['Schule',['Lehrerin','Schüler','Hausmeister','Direktorin','Sekretär']], ['Piratenschiff',['Kapitänin','Matrose','Gefangener','Koch','Papagei']],
+    ['Zirkus',['Clown','Akrobatin','Dompteur','Zuschauerin','Zauberer']], ['Raumstation',['Astronautin','Ingenieur','Alien','Ärztin','Kommandant']],
+    ['Supermarkt',['Kassiererin','Kunde','Lagerist','Kind','Filialleiterin']], ['Kino',['Zuschauer','Popcorn-Verkäuferin','Filmvorführer','Kritikerin','Pärchen']],
+    ['Strand',['Rettungsschwimmerin','Surfer','Eisverkäufer','Tourist','Kind']], ['Bauernhof',['Bäuerin','Traktorfahrer','Tierärztin','Erntehelfer','Kind']],
+    ['Restaurant',['Köchin','Kellner','Gast','Kritiker','Tellerwäscher']], ['Polizeistation',['Kommissarin','Verdächtiger','Zeuge','Anwältin','Praktikant']]
+  ],
   eher: [
-    'Wer würde eher im Urlaub den Reisepass vergessen?','Wer würde eher bei einer Quizshow gewinnen?',
-    'Wer würde eher eine Woche ohne Handy überleben?','Wer würde eher aus Versehen berühmt werden?',
-    'Wer würde eher beim Wandertag verloren gehen?','Wer würde eher einen Tanzwettbewerb gewinnen?',
-    'Wer würde eher heimlich die letzte Pizza essen?','Wer würde eher in einer Zombie-Apokalypse überleben?',
-    'Wer würde eher den Wecker zehnmal snoozen?','Wer würde eher ein eigenes Unternehmen gründen?',
-    'Wer würde eher bei einem Horrorfilm schreien?','Wer würde eher mit Tieren sprechen, als wären es Menschen?'
+    'Wer würde eher im Urlaub den Reisepass vergessen?','Wer würde eher bei einer Quizshow gewinnen?','Wer würde eher eine Woche ohne Handy überleben?',
+    'Wer würde eher aus Versehen berühmt werden?','Wer würde eher beim Wandertag verloren gehen?','Wer würde eher einen Tanzwettbewerb gewinnen?',
+    'Wer würde eher heimlich die letzte Pizza essen?','Wer würde eher in einer Zombie-Apokalypse überleben?','Wer würde eher den Wecker zehnmal snoozen?',
+    'Wer würde eher ein eigenes Unternehmen gründen?','Wer würde eher bei einem Horrorfilm schreien?','Wer würde eher mit Tieren sprechen, als wären es Menschen?',
+    'Wer würde eher Präsident:in werden?','Wer würde eher im Kino einschlafen?','Wer würde eher eine Million im Lotto gewinnen – und alles verlieren?',
+    'Wer würde eher auf einer einsamen Insel überleben?','Wer würde eher ein Buch schreiben?','Wer würde eher den Geburtstag der besten Freundin vergessen?',
+    'Wer würde eher 24 Stunden am Stück zocken?','Wer würde eher bei einer Talentshow mitmachen?','Wer würde eher aus Versehen die Lehrkraft „Mama“ nennen?'
+  ],
+  wuerdest: [
+    ['nie wieder Musik hören','nie wieder Filme schauen'],['fliegen können','unsichtbar sein können'],['immer 10 Minuten zu spät kommen','immer 2 Stunden zu früh sein'],
+    ['nur noch Pizza essen','nie wieder Pizza essen'],['in der Vergangenheit leben','in der Zukunft leben'],['mit Tieren sprechen können','alle Sprachen sprechen können'],
+    ['ein Jahr ohne Handy','ein Jahr ohne Freunde treffen'],['immer singen statt sprechen','immer tanzen statt gehen'],['im Dschungel wohnen','in der Antarktis wohnen'],
+    ['Gedanken lesen können','die Zukunft sehen können'],['nur flüstern können','nur schreien können'],['ein Drache als Haustier','ein Einhorn als Haustier'],
+    ['nie wieder Süßes','nie wieder Chips'],['berühmt sein','superreich sein, aber niemand kennt dich'],['jeden Tag Schuluniform','jeden Tag ein Clownskostüm']
+  ],
+  noch_nie: [
+    'Ich habe noch nie eine ganze Serie an einem Wochenende geschaut.','Ich habe noch nie eine Nachricht an die falsche Person geschickt.',
+    'Ich habe noch nie im Unterricht geschlafen.','Ich habe noch nie etwas Wichtiges im Bus vergessen.','Ich habe noch nie so getan, als wäre ich krank.',
+    'Ich habe noch nie einen Knochen gebrochen.','Ich habe noch nie ein Tier aus dem Garten gerettet.','Ich habe noch nie bei einem Film geweint.',
+    'Ich habe noch nie heimlich die Hausaufgaben abgeschrieben.','Ich habe noch nie den Namen von jemandem vergessen, direkt nachdem er sich vorgestellt hat.',
+    'Ich habe noch nie in einem Zelt übernachtet.','Ich habe noch nie auf einer Bühne gestanden.','Ich habe noch nie eine Pflanze sterben lassen.',
+    'Ich habe noch nie eine ganze Pizza allein gegessen.','Ich habe noch nie mit Absicht ein Video viral gehen lassen wollen.'
   ],
   wahrheit: [
-    'Was war dein peinlichster Moment in der Schule?','Wen hier würdest du auf eine einsame Insel mitnehmen?',
-    'Was ist das Seltsamste, das du je gegessen hast?','Welche App nutzt du heimlich am meisten?',
-    'Was war die beste Ausrede, die du je benutzt hast?','Welches Lied hörst du heimlich, obwohl es peinlich ist?',
-    'Was würdest du mit 1 Million Euro als Erstes machen?','Was ist deine merkwürdigste Angewohnheit?'
+    'Was war dein peinlichster Moment in der Schule?','Wen hier würdest du auf eine einsame Insel mitnehmen?','Was ist das Seltsamste, das du je gegessen hast?',
+    'Welche App nutzt du heimlich am meisten?','Was war die beste Ausrede, die du je benutzt hast?','Welches Lied hörst du heimlich, obwohl es peinlich ist?',
+    'Was würdest du mit 1 Million Euro als Erstes machen?','Was ist deine merkwürdigste Angewohnheit?','Wovor hast du Angst, obwohl es albern ist?',
+    'Welche Person hier kennst du am längsten?','Was war dein schlimmstes Geschenk?','Welchen Promi würdest du gern einen Tag lang sein?'
   ],
   pflicht: [
-    'Sprich bis zu deiner nächsten Runde nur noch in Reimen.','Mach 10 Kniebeugen und zähle laut auf Englisch.',
-    'Imitiere eine Lehrkraft deiner Wahl – die anderen raten.','Sing den Refrain deines Lieblingslieds.',
-    'Erzähle einen Witz. Wenn keiner lacht: noch einen.','Lass die Gruppe dein Hintergrundbild für 1 Minute aussuchen.',
-    'Sprich 1 Minute wie ein Nachrichtensprecher über dein Frühstück.','Mach deinen besten Roboter-Tanz für 15 Sekunden.'
+    'Sprich bis zu deiner nächsten Runde nur noch in Reimen.','Mach 10 Kniebeugen und zähle laut auf Englisch.','Imitiere eine Lehrkraft deiner Wahl – die anderen raten.',
+    'Sing den Refrain deines Lieblingslieds.','Erzähle einen Witz. Wenn keiner lacht: noch einen.','Lass die Gruppe dein Hintergrundbild für 1 Minute aussuchen.',
+    'Sprich 1 Minute wie ein Nachrichtensprecher über dein Frühstück.','Mach deinen besten Roboter-Tanz für 15 Sekunden.','Sprich mit Akzent, bis du wieder dran bist.',
+    'Balanciere 30 Sekunden auf einem Bein.','Mach ein Tiergeräusch – die anderen raten das Tier.','Erfinde ein Gedicht über die Person links neben dir.'
   ],
   skala: [
-    'Wie chaotisch ist {name}?','Wie gut kann {name} kochen?','Wie wahrscheinlich ist es, dass {name} zu spät kommt?',
-    'Wie sportlich ist {name}?','Wie gut kann {name} ein Geheimnis bewahren?','Wie abenteuerlustig ist {name}?',
-    'Wie gut ist {name} im Lügen?','Wie viel Drama verträgt {name}?'
+    'Wie chaotisch ist {name}?','Wie gut kann {name} kochen?','Wie wahrscheinlich ist es, dass {name} zu spät kommt?','Wie sportlich ist {name}?',
+    'Wie gut kann {name} ein Geheimnis bewahren?','Wie abenteuerlustig ist {name}?','Wie gut ist {name} im Lügen?','Wie viel Drama verträgt {name}?',
+    'Wie gut kann {name} singen?','Wie ordentlich ist das Zimmer von {name}?','Wie mutig ist {name} bei Horrorfilmen?','Wie gut wäre {name} als Lehrkraft?'
   ],
-  bombe: ['Obstsorten','Automarken','Länder in Europa','Dinge im Badezimmer','Sportarten','Berufe','Tiere mit vier Beinen',
-          'Schulfächer','Social-Media-Apps','Dinge, die man im Kühlschrank findet','Musikinstrumente','Farben','Hauptstädte','Gemüse'],
+  bombe: ['Obstsorten','Automarken','Länder in Europa','Dinge im Badezimmer','Sportarten','Berufe','Tiere mit vier Beinen','Schulfächer','Social-Media-Apps',
+          'Dinge im Kühlschrank','Musikinstrumente','Farben','Hauptstädte','Gemüse','Disney-Filme','Wörter mit „Sch“','Dinge, die fliegen','Körperteile','Süßigkeiten','Dinge am Strand'],
   tabu: [
-    ['Schule',['Lehrer','Unterricht','Klasse','lernen']], ['Fahrrad',['Rad','treten','Lenker','fahren']],
-    ['Pizza',['Italien','Käse','Teig','Ofen']], ['Handy',['Telefon','Smartphone','anrufen','App']],
-    ['Sommer',['Sonne','warm','Ferien','Jahreszeit']], ['Fußball',['Tor','Ball','Spiel','Mannschaft']],
-    ['Geburtstag',['Kuchen','Feier','Geschenk','Jahr']], ['Zahnbürste',['Zähne','putzen','Zahnpasta','Bad']],
-    ['Kino',['Film','Popcorn','Leinwand','Ticket']], ['Schnee',['weiß','Winter','kalt','Flocke']],
-    ['Hausaufgaben',['Schule','Lehrer','erledigen','Heft']], ['Weihnachten',['Baum','Geschenke','Dezember','Fest']],
-    ['Polizei',['Verbrecher','Blaulicht','Auto','Gesetz']], ['Gitarre',['Saiten','Instrument','spielen','Musik']]
+    ['Schule',['Lehrer','Unterricht','Klasse','lernen']], ['Fahrrad',['Rad','treten','Lenker','fahren']], ['Pizza',['Italien','Käse','Teig','Ofen']],
+    ['Handy',['Telefon','Smartphone','anrufen','App']], ['Sommer',['Sonne','warm','Ferien','Jahreszeit']], ['Fußball',['Tor','Ball','Spiel','Mannschaft']],
+    ['Geburtstag',['Kuchen','Feier','Geschenk','Jahr']], ['Zahnbürste',['Zähne','putzen','Zahnpasta','Bad']], ['Kino',['Film','Popcorn','Leinwand','Ticket']],
+    ['Schnee',['weiß','Winter','kalt','Flocke']], ['Hausaufgaben',['Schule','Lehrer','erledigen','Heft']], ['Weihnachten',['Baum','Geschenke','Dezember','Fest']],
+    ['Polizei',['Verbrecher','Blaulicht','Auto','Gesetz']], ['Gitarre',['Saiten','Instrument','spielen','Musik']], ['Regenschirm',['Regen','nass','aufspannen','Wetter']],
+    ['Vampir',['Blut','Zähne','Dracula','Nacht']], ['Kaffee',['trinken','Bohne','Tasse','wach']], ['Urlaub',['Reise','Ferien','Hotel','Koffer']]
+  ],
+  pantomime: ['Zähne putzen','Fallschirmspringen','Hund ausführen','Pizza backen','Auto waschen','Achterbahn fahren','Schneemann bauen','Gitarre spielen',
+              'Angeln','Zelt aufbauen','Elefant','Superheld','Ballett tanzen','Kaugummi kleben','Spinne entdecken','Selfie machen','Fensterputzer','Bowling',
+              'Surfen','Zug verpassen','Geschenk auspacken','Zauberer','Tennis','Wäsche aufhängen'],
+  emoji: [
+    ['🦁👑','Der König der Löwen'],['❄️👸','Die Eiskönigin'],['🕷️🧑','Spider-Man'],['🧙‍♂️💍','Der Herr der Ringe'],['🚢🧊💔','Titanic'],['🐠🔍','Findet Nemo'],
+    ['🦖🏝️','Jurassic Park'],['🧸🤠','Toy Story'],['⚡👓🧙','Harry Potter'],['🐼🥋','Kung Fu Panda'],['👻🚫','Ghostbusters'],['🍫🏭','Charlie und die Schokoladenfabrik'],
+    ['🧜‍♀️🌊','Arielle, die Meerjungfrau'],['🐀👨‍🍳','Ratatouille'],['🎈🏠','Oben'],['🦇🧑','Batman'],['🍝🐶❤️','Susi und Strolch'],['🏴‍☠️💀⚓','Fluch der Karibik']
+  ],
+  schaetzen: [
+    ['Wie viele Knochen hat ein erwachsener Mensch?',206,''],['Wie hoch ist der Eiffelturm (in Metern)?',330,'m'],['Wie viele Länder gibt es in Europa (ungefähr)?',44,''],
+    ['Wie viele Tasten hat ein Klavier?',88,''],['Wie alt kann eine Riesenschildkröte werden (Jahre)?',190,'Jahre'],['Wie viele Einwohner hat Berlin (in Millionen)?',3.7,'Mio.'],
+    ['Wie lang ist die Chinesische Mauer (in km)?',21196,'km'],['Wie viele Herzen hat ein Oktopus?',3,''],['Wie schnell kann ein Gepard laufen (km/h)?',110,'km/h'],
+    ['Wie viele Minuten hat eine Woche?',10080,''],['In welchem Jahr fiel die Berliner Mauer?',1989,''],['Wie viele Zähne hat ein erwachsener Mensch?',32,''],
+    ['Wie tief ist der tiefste Punkt im Meer (in Metern)?',10994,'m'],['Wie viele Bundesländer hat Deutschland?',16,'']
+  ],
+  missionen: [
+    'Bring jemanden dazu, das Wort „Banane“ zu sagen.','Gib drei verschiedenen Personen ein Kompliment.','Bring jemanden dazu, dir ein Glas Wasser zu holen.',
+    'Benutze das Wort „fantastisch“ fünfmal, ohne dass es auffällt.','Bring jemanden dazu, die Uhrzeit zu sagen.','Sorge dafür, dass jemand ein Lied anstimmt.',
+    'Bring zwei Personen dazu, sich abzuklatschen.','Bring jemanden dazu, über das Wetter zu reden.','Lass jemanden ein Foto von dir machen.',
+    'Bring jemanden dazu, „Ich weiß es nicht“ zu sagen.','Imitiere unauffällig die Sitzhaltung einer anderen Person für 2 Minuten.','Bring jemanden dazu, sein Lieblingsessen zu nennen.'
   ]
 };
 
-// ---------- Hilfsfunktionen ----------
+// ================= Hilfsfunktionen =================
 const $ = s => document.querySelector(s);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-// Karten ohne Wiederholung ziehen, bis der Stapel leer ist
 const decks = {};
 const draw = (key, arr) => { if (!decks[key] || !decks[key].length) decks[key] = shuffle(arr); return decks[key].pop(); };
+const AV_COLORS = ['#ffd54a','#ff8fb1','#b388ff','#64ffda','#ffc046','#8fd3ff','#c6ff8f','#ffab91'];
 
 let players = [];
 try { players = JSON.parse(localStorage.getItem('konfetti-players')) || []; } catch (e) {}
 const savePlayers = () => { try { localStorage.setItem('konfetti-players', JSON.stringify(players)); } catch (e) {} };
 
 let timers = [];
-const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; };
+const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; if (window._raf) cancelAnimationFrame(window._raf); };
 
-function render(html, showBar = true) {
-  $('#app').innerHTML = html;
-  $('#bar').style.display = showBar ? 'flex' : 'none';
-  $('#bar').innerHTML = `<span>👥 ${players.length ? players.map(esc).join(', ') : 'Noch keine Spieler'}</span><button onclick="screenPlayers()">Spieler</button>`;
+let current = null; // aktuelles Spiel (für Farbe und Kopfzeile)
+function render(html, opts = {}) {
+  const g = current;
+  const style = g ? `--c1:var(--${g.grp});--c2:var(--${g.grp}2)` : '';
+  const top = opts.top === false || !g ? '' :
+    `<div class="top"><button class="back" onclick="${opts.backTo || 'home()'}" aria-label="Zurück">‹</button><span class="pill">${g.e} ${g.name}</span></div>`;
+  $('#app').innerHTML = `<div class="screen" style="${style}">${top}${html}</div>`;
   window.scrollTo(0, 0);
 }
-const backBtn = `<button class="back" onclick="home()">← Zurück</button>`;
 function needPlayers(min, fn) {
-  if (players.length < min) { alert(`Für dieses Spiel braucht ihr mindestens ${min} Spieler.`); screenPlayers(fn); return false; }
+  if (players.length < min) { screenPlayers(fn, `Für dieses Spiel braucht ihr mindestens ${min} Spieler.`); return false; }
   return true;
 }
+function rules(items) { return `<div class="rules"><ol>${items.map(i => `<li>${i}</li>`).join('')}</ol></div>`; }
 
-// ---------- Startseite ----------
+// Handy reihum weitergeben, jeder sieht seine geheime Karte
+function passAround(cards, done) {
+  let i = 0, shown = false;
+  const step = () => {
+    const c = cards[i];
+    if (!shown) {
+      render(`<p class="steps">Spieler ${i + 1} von ${cards.length}</p>
+        <div class="card"><span class="huge">🤫</span><p class="muted">Gib das Handy an</p><div class="big">${esc(c.player)}</div><p class="muted">Niemand sonst darf hinschauen!</p></div>
+        <button class="btn" id="go">Karte aufdecken</button>`);
+      $('#go').onclick = () => { shown = true; vibrate(40); step(); };
+    } else {
+      render(`<p class="steps">Spieler ${i + 1} von ${cards.length}</p>
+        <div class="card flip ${c.color ? 'color' : ''}" ${c.color ? `style="--c1:${c.color};--c2:${c.color2 || c.color}"` : ''}>${c.html}</div>
+        <button class="btn sec" id="go">Verdecken & weitergeben</button>`);
+      $('#go').onclick = () => { shown = false; i++; i < cards.length ? step() : done(); };
+    }
+  };
+  step();
+}
+
+// ================= Spielekatalog =================
+const GROUPS = { bluff: 'Bluffen & Täuschen', fragen: 'Fragen & Lachen', tempo: 'Tempo & Kreativität', tool: 'Werkzeuge' };
 const GAMES = [
-  { group: 'Bluffen & Täuschen', items: [
-    { id: 'impostor', e: '🕵️', name: 'Impostor', desc: 'Wer kennt das Wort nicht?', c: 'var(--bluff)', fn: () => impostorSetup() } ] },
-  { group: 'Fragen & Diskussion', items: [
-    { id: 'eher', e: '👉', name: 'Wer würde eher?', desc: 'Alle zeigen auf jemanden', c: 'var(--fragen)', fn: () => eher() },
-    { id: 'wop', e: '🎲', name: 'Wahrheit oder Pflicht', desc: 'Der Klassiker', c: 'var(--fragen)', fn: () => wop() },
-    { id: 'skala', e: '💯', name: 'Skala 1–10', desc: 'Wie gut kennt ihr euch?', c: 'var(--fragen)', fn: () => skala() } ] },
-  { group: 'Tempo & Kreativität', items: [
-    { id: 'bombe', e: '💣', name: 'Die Bombe', desc: 'Weitergeben, bevor es knallt', c: 'var(--tempo)', fn: () => bombeStart() },
-    { id: 'tabu', e: '🤐', name: 'Verbotene Wörter', desc: 'Erklären ohne Tabuwörter', c: 'var(--tempo)', fn: () => tabuSetup() } ] },
-  { group: 'Werkzeuge', items: [
-    { id: 'rad', e: '🎡', name: 'Glücksrad', desc: 'Zufällig jemanden wählen', c: 'var(--tool)', fn: () => wheel() } ] }
+  { id: 'impostor', grp: 'bluff', e: '🕵️', name: 'Impostor', desc: 'Wer kennt das Wort nicht?', min: 3, fn: () => impostorSetup() },
+  { id: 'spion', grp: 'bluff', e: '🗺️', name: 'Geheimer Ort', desc: 'Finde den Spion durch Fragen', min: 3, fn: () => spionSetup(), isNew: 1 },
+  { id: 'werwolf', grp: 'bluff', e: '🐺', name: 'Werwölfe', desc: 'Die App ist euer Erzähler', min: 5, fn: () => werwolfSetup(), isNew: 1 },
+  { id: 'mission', grp: 'bluff', e: '🎯', name: 'Geheime Mission', desc: 'Heimliche Aufgaben für die Party', min: 3, fn: () => missionSetup(), isNew: 1 },
+  { id: 'eher', grp: 'fragen', e: '👉', name: 'Wer würde eher?', desc: 'Alle zeigen auf jemanden', min: 3, fn: () => eher() },
+  { id: 'wuerdest', grp: 'fragen', e: '⚖️', name: 'Würdest du eher?', desc: 'Zwei Optionen, eine Wahl', min: 2, fn: () => wuerdest(), isNew: 1 },
+  { id: 'wop', grp: 'fragen', e: '🎲', name: 'Wahrheit oder Pflicht', desc: 'Der Klassiker', min: 2, fn: () => wop() },
+  { id: 'skala', grp: 'fragen', e: '💯', name: 'Skala 1–10', desc: 'Wie gut kennt ihr euch?', min: 2, fn: () => skala() },
+  { id: 'nochnie', grp: 'fragen', e: '🙈', name: 'Ich hab noch nie', desc: 'Wer hat schon mal …?', min: 2, fn: () => nochNie(), isNew: 1 },
+  { id: 'bombe', grp: 'tempo', e: '💣', name: 'Die Bombe', desc: 'Weitergeben, bevor es knallt', min: 2, fn: () => bombeStart() },
+  { id: 'tabu', grp: 'tempo', e: '🤐', name: 'Verbotene Wörter', desc: 'Erklären ohne Tabuwörter', min: 4, fn: () => teamSetup('tabu') },
+  { id: 'pantomime', grp: 'tempo', e: '🎭', name: 'Pantomime', desc: 'Ohne Worte vorspielen', min: 4, fn: () => teamSetup('pantomime'), isNew: 1 },
+  { id: 'kette', grp: 'tempo', e: '🔗', name: 'Kettenreaktion', desc: 'Wortkette unter Zeitdruck', min: 2, fn: () => ketteSetup(), isNew: 1 },
+  { id: 'emoji', grp: 'tempo', e: '🎬', name: 'Emoji-Rätsel', desc: 'Welcher Film ist das?', min: 2, fn: () => emoji(), isNew: 1 },
+  { id: 'schaetzen', grp: 'tempo', e: '📏', name: 'Schätzen', desc: 'Wer liegt am nächsten?', min: 2, fn: () => schaetzen(), isNew: 1 },
+  { id: 'rad', grp: 'tool', e: '🎡', name: 'Glücksrad', desc: 'Zufällig jemanden wählen', min: 2, fn: () => wheel() },
+  { id: 'wuerfel', grp: 'tool', e: '🪙', name: 'Würfel & Münze', desc: 'Würfeln oder Münze werfen', min: 0, fn: () => wuerfel(), isNew: 1 }
 ];
+let filter = 'alle';
+try { filter = sessionStorage.getItem('konfetti-filter') || 'alle'; } catch (e) {}
+const start = id => { current = GAMES.find(g => g.id === id); clearTimers(); current.fn(); };
 
+function avatars() {
+  return players.slice(0, 5).map((p, i) => `<span class="av" style="background:${AV_COLORS[i % AV_COLORS.length]}">${esc(p[0].toUpperCase())}</span>`).join('');
+}
 function home() {
-  clearTimers();
-  render(`<h1>🎉 Konfetti</h1><p class="sub">Partyspiele für eure Gruppe – ein Handy, viel Spaß.</p>
-    ${GAMES.map((g, gi) => `<div class="section-title">${g.group}</div><div class="grid">
-      ${g.items.map((it, ii) => `<button class="tile" style="background:${it.c}" onclick="GAMES[${gi}].items[${ii}].fn()">
-        <span class="e">${it.e}</span><span><b>${it.name}</b><br><small>${it.desc}</small></span></button>`).join('')}
-    </div>`).join('')}`);
+  clearTimers(); current = null;
+  const groups = Object.keys(GROUPS).filter(k => filter === 'alle' || filter === k);
+  render(`<div class="hero"><canvas id="confetti"></canvas>
+      <h1>Konfetti</h1><p>${GAMES.length} Partyspiele · ein Handy · null Langeweile</p>
+      <button class="who" onclick="screenPlayers()">
+        ${players.length ? `<span class="avatars">${avatars()}</span>` : '<span class="av" style="background:var(--gold)">+</span>'}
+        <span>${players.length ? players.map(esc).join(', ') : 'Spieler hinzufügen'}</span><em>${players.length ? players.length + ' ✎' : '›'}</em>
+      </button></div>
+    <div class="filters">${[['alle','Alle'], ...Object.entries(GROUPS).map(([k, v]) => [k, v.split(' ')[0]])]
+      .map(([k, v]) => `<button class="fchip ${filter === k ? 'on' : ''}" onclick="setFilter('${k}')">${v}</button>`).join('')}</div>
+    ${groups.map(k => {
+      const list = GAMES.filter(g => g.grp === k);
+      return `<div class="section-title"><b>${GROUPS[k]}</b><small>${list.length} Spiele</small></div><div class="grid">
+      ${list.map(g => `<button class="tile ${g.isNew ? 'new' : ''}" style="--c1:var(--${g.grp});--c2:var(--${g.grp}2)" onclick="start('${g.id}')">
+        <span class="badge">${g.isNew ? 'NEU' : g.min ? g.min + '+ 👤' : '∞'}</span>
+        <span class="e">${g.e}</span><span><b>${g.name}</b><small>${g.desc}</small></span></button>`).join('')}</div>`;
+    }).join('')}`, { top: false });
+  confettiBurst();
+}
+function setFilter(k) { filter = k; try { sessionStorage.setItem('konfetti-filter', k); } catch (e) {} home(); }
+
+function confettiBurst() {
+  const cv = $('#confetti'); if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = cv.getContext('2d'), dpr = devicePixelRatio || 1;
+  cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr; ctx.scale(dpr, dpr);
+  const W = cv.clientWidth, H = cv.clientHeight, cols = ['#ffd54a','#ff3d7f','#7c4dff','#00bfa5','#ff7a1a','#b388ff'];
+  const bits = Array.from({ length: 46 }, () => ({ x: Math.random() * W, y: -Math.random() * H, vy: 0.6 + Math.random() * 1.4, vx: (Math.random() - .5) * .8,
+    r: Math.random() * 6.28, vr: (Math.random() - .5) * .2, w: 4 + Math.random() * 5, h: 7 + Math.random() * 6, c: pick(cols) }));
+  let t = 0;
+  const frame = () => {
+    if (!document.body.contains(cv)) return;
+    ctx.clearRect(0, 0, W, H); t++;
+    bits.forEach(b => { b.y += b.vy; b.x += b.vx + Math.sin((t + b.h * 10) / 30) * .3; b.r += b.vr;
+      if (b.y > H + 10 && t < 260) { b.y = -10; b.x = Math.random() * W; }
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.globalAlpha = Math.max(0, 1 - t / 420); ctx.fillStyle = b.c; ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); ctx.restore(); });
+    if (t < 420) window._raf = requestAnimationFrame(frame);
+  };
+  frame();
 }
 
-// ---------- Spieler verwalten ----------
-function screenPlayers(after) {
+// ================= Spieler =================
+function screenPlayers(after, hint) {
   window._after = after || null;
-  render(`${backBtn}<h2>Spieler</h2>
-    <form onsubmit="addPlayer(event)"><input id="pname" placeholder="Name eingeben und Enter" maxlength="20" autocomplete="off"></form>
-    <div class="chips">${players.map((p, i) => `<span class="chip">${esc(p)} <button onclick="removePlayer(${i})" aria-label="entfernen">✕</button></span>`).join('')}</div>
-    <p class="muted">${players.length} Spieler</p>
-    <button class="btn" onclick="(window._after || home)()">Fertig</button>`, false);
-  $('#pname').focus();
-}
-function addPlayer(e) {
-  e.preventDefault();
-  const n = $('#pname').value.trim();
-  if (n && !players.includes(n)) { players.push(n); savePlayers(); }
-  screenPlayers(window._after);
+  const prev = current; current = null;
+  render(`<div class="top"><button class="back" onclick="home()" aria-label="Zurück">‹</button><span class="pill" style="--c1:var(--tool);--c2:var(--tool2)">👥 Spieler</span></div>
+    ${hint ? `<p class="hint">${hint}</p>` : ''}
+    <form id="pf"><input id="pname" aria-label="Spielername" placeholder="Name eingeben …" maxlength="16" autocomplete="off" enterkeyhint="done"></form>
+    <button class="btn sec" id="addb">＋ Hinzufügen</button>
+    <div class="chips">${players.map((p, i) => `<button class="chip" onclick="removePlayer(${i})"><span class="av" style="margin:0;width:24px;height:24px;background:${AV_COLORS[i % AV_COLORS.length]}">${esc(p[0].toUpperCase())}</span>${esc(p)} <span class="x">✕</span></button>`).join('')}</div>
+    <p class="muted">${players.length ? players.length + ' Spieler · Tippen zum Entfernen' : 'Noch niemand dabei. Tragt eure Namen ein!'}</p>
+    <div class="bar"><button class="btn" style="--c1:var(--tool);--c2:var(--tool2)" id="done">Fertig</button></div>`, { top: false });
+  const add = e => { e && e.preventDefault(); const n = $('#pname').value.trim();
+    if (n && !players.includes(n)) { players.push(n); savePlayers(); } screenPlayers(window._after); setTimeout(() => $('#pname').focus(), 30); };
+  $('#pf').onsubmit = add; $('#addb').onclick = add;
+  $('#done').onclick = () => { current = prev; const f = window._after; f && players.length ? f() : home(); };
 }
 function removePlayer(i) { players.splice(i, 1); savePlayers(); screenPlayers(window._after); }
 
-// ---------- Impostor ----------
+// ================= Impostor =================
 let imp = {};
 function impostorSetup() {
   if (!needPlayers(3, impostorSetup)) return;
   const cats = Object.keys(DATA.impostor);
-  render(`${backBtn}<h2>🕵️ Impostor</h2>
-    <p class="muted">Alle sehen ein geheimes Wort – nur der Impostor nicht. Reihum nennt jeder einen Hinweis. Dann stimmt ihr ab, wer geblufft hat.</p>
-    <div class="section-title">Kategorie</div>
-    <div class="chips">${cats.map(c => `<button class="chip" style="border:0;color:inherit;font:inherit;cursor:pointer" onclick="impostorStart('${c}')">${c}</button>`).join('')}</div>
-    <button class="btn" onclick="impostorStart('${pick(cats)}')">Zufällige Kategorie</button>`);
+  render(`<h2>Wer blufft hier?</h2>${rules(['Alle sehen ein geheimes Wort, nur der Impostor nicht.','Reihum nennt jeder <b>ein</b> Hinweiswort.','Dann stimmt ihr ab. Der Impostor darf zum Schluss das Wort raten.'])}
+    <p class="label muted">Kategorie wählen</p>
+    <div class="chips">${cats.map(c => `<button class="chip" onclick="impostorStart('${c}')">${c}</button>`).join('')}</div>
+    <button class="btn" onclick="impostorStart(pick(Object.keys(DATA.impostor)))">🎲 Zufällige Kategorie</button>`);
 }
 function impostorStart(cat) {
   const count = players.length >= 8 ? 2 : 1;
-  imp = { cat, word: draw('imp-' + cat, DATA.impostor[cat]), impostors: shuffle(players).slice(0, count), idx: 0, shown: false };
-  impostorCard();
-}
-function impostorCard() {
-  const p = players[imp.idx];
-  if (!imp.shown) {
-    render(`<div class="card"><p class="muted">Gib das Handy an</p><div class="big">${esc(p)}</div><p class="muted">Spieler ${imp.idx + 1} von ${players.length}</p></div>
-      <button class="btn" onclick="imp.shown=true;vibrate(40);impostorCard()">Karte aufdecken</button>`, false);
-  } else {
-    const isImp = imp.impostors.includes(p);
-    render(`<div class="card" style="background:${isImp ? 'var(--danger)' : 'var(--card)'}">
-      ${isImp ? `<div class="huge">🕵️</div><div class="big">Du bist der Impostor!</div><p>Kategorie: ${imp.cat}. Bluffe dich durch!</p>`
-              : `<p class="muted">Das geheime Wort</p><div class="big">${imp.word}</div><p class="muted">Kategorie: ${imp.cat}</p>`}
-      </div><button class="btn sec" onclick="impostorNext()">Verdecken & weitergeben</button>`, false);
-  }
-}
-function impostorNext() {
-  imp.shown = false; imp.idx++;
-  if (imp.idx < players.length) return impostorCard();
-  render(`<div class="card"><div class="huge">🗣️</div><div class="big">${esc(pick(players))} beginnt!</div>
-    <p class="muted">Jeder nennt reihum ein Hinweiswort. Danach diskutiert ihr und zeigt auf 3-2-1 auf euren Verdacht.</p></div>
-    <button class="btn" onclick="impostorReveal()">Auflösung zeigen</button>`, false);
+  imp = { cat, word: draw('imp-' + cat, DATA.impostor[cat]), impostors: shuffle(players).slice(0, count) };
+  passAround(players.map(p => imp.impostors.includes(p)
+    ? { player: p, color: 'var(--bad)', color2: '#ff8a65', html: `<span class="huge">🕵️</span><div class="big">Du bist der Impostor!</div><p>Kategorie: <b>${imp.cat}</b>. Bluffe dich durch!</p>` }
+    : { player: p, html: `<p class="label muted">Das geheime Wort</p><div class="big">${imp.word}</div><p class="muted">Kategorie: ${imp.cat}</p>` }),
+    () => {
+      render(`<div class="card color"><span class="huge">🗣️</span><div class="big">${esc(pick(players))} beginnt!</div>
+        <p class="muted">Jeder nennt reihum ein Hinweiswort. Danach diskutiert ihr und zeigt auf 3-2-1 auf euren Verdacht.</p></div>
+        <button class="btn" onclick="impostorReveal()">Auflösung zeigen</button>`);
+    });
 }
 function impostorReveal() {
-  render(`<div class="card"><p class="muted">${imp.impostors.length > 1 ? 'Die Impostor waren' : 'Der Impostor war'}</p>
-    <div class="big">${imp.impostors.map(esc).join(' & ')}</div><p class="muted">Das Wort war</p><div class="big">${imp.word}</div>
-    <p class="muted">Wurde der Impostor erwischt? Er darf noch einmal das Wort raten!</p></div>
+  vibrate(80);
+  render(`<div class="card flip color"><p class="label muted">${imp.impostors.length > 1 ? 'Die Impostor waren' : 'Der Impostor war'}</p>
+    <div class="big">${imp.impostors.map(esc).join(' & ')}</div><p class="label muted">Das Wort war</p><div class="big">${imp.word}</div></div>
     <div class="row"><button class="btn" onclick="impostorStart(imp.cat)">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
 
-// ---------- Wer würde eher? ----------
-function eher() {
-  render(`${backBtn}<div class="card" style="background:var(--fragen)"><div class="big">${draw('eher', DATA.eher)}</div>
-    <p>Auf 3-2-1 zeigen alle gleichzeitig auf eine Person!</p></div>
-    <button class="btn sec" onclick="eher()">Nächste Frage</button>`);
+// ================= Geheimer Ort =================
+let spy = {};
+function spionSetup() {
+  if (!needPlayers(3, spionSetup)) return;
+  render(`<h2>Wo sind wir?</h2>${rules(['Alle außer dem Spion kennen den Ort und haben eine Rolle.','Stellt euch reihum Fragen, z. B. „Was hast du heute an?“','Nach 6 Minuten wird abgestimmt. Der Spion gewinnt, wenn er unentdeckt bleibt oder den Ort errät.'])}
+    <button class="btn" onclick="spionStart()">Rollen verteilen</button>`);
+}
+function spionStart() {
+  const [ort, rollen] = draw('orte', DATA.orte); const spion = pick(players); const r = shuffle(rollen);
+  spy = { ort, spion };
+  passAround(players.map((p, i) => p === spion
+    ? { player: p, color: 'var(--bad)', color2: '#ff8a65', html: `<span class="huge">🕶️</span><div class="big">Du bist der Spion!</div><p>Finde heraus, wo ihr seid, ohne aufzufliegen.</p>` }
+    : { player: p, html: `<p class="label muted">Ort</p><div class="big">${ort}</div><p class="label muted">Deine Rolle</p><div class="big" style="font-size:1.4rem">${r[i % r.length]}</div>` }),
+    spionTimer);
+}
+function spionTimer() {
+  const total = 360, end = Date.now() + total * 1000;
+  render(`<div class="card color"><p class="label muted">Fragerunde</p><div class="huge timer" id="t">6:00</div><p class="muted">${esc(pick(players))} stellt die erste Frage.</p></div>
+    <div class="progress" style="margin-top:14px"><i id="pb" style="width:100%"></i></div>
+    <button class="btn" onclick="spionReveal()">Abstimmen & auflösen</button>`);
+  timers.push(setInterval(() => {
+    const s = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+    if (!$('#t')) return clearTimers();
+    $('#t').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; $('#pb').style.width = (s / total * 100) + '%';
+    if (s === 0) { clearTimers(); vibrate([300, 100, 300]); $('#t').textContent = 'Zeit!'; }
+  }, 500));
+}
+function spionReveal() {
+  clearTimers(); vibrate(80);
+  render(`<div class="card flip color"><p class="label muted">Der Spion war</p><div class="big">${esc(spy.spion)}</div><p class="label muted">Der Ort war</p><div class="big">${spy.ort}</div></div>
+    <div class="row"><button class="btn" onclick="spionStart()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
 
-// ---------- Wahrheit oder Pflicht ----------
+// ================= Werwölfe =================
+const ROLLEN = {
+  wolf: { e: '🐺', n: 'Werwolf', t: 'Nachts wählt ihr Werwölfe gemeinsam ein Opfer. Tagsüber tut ihr ganz unschuldig.', c: 'var(--bad)' },
+  seherin: { e: '🔮', n: 'Seherin', t: 'Jede Nacht darfst du die Rolle einer Person erfahren.', c: 'var(--bluff)' },
+  hexe: { e: '🧪', n: 'Hexe', t: 'Du hast einen Heiltrank und einen Gifttrank – je einmal pro Spiel.', c: 'var(--tool)' },
+  dorf: { e: '🧑‍🌾', n: 'Dorfbewohner', t: 'Finde die Werwölfe und stimme sie tagsüber raus.', c: 'var(--tempo)' }
+};
+let ww = {};
+function werwolfSetup() {
+  if (!needPlayers(5, werwolfSetup)) return;
+  const n = players.length, wolves = Math.max(1, Math.floor(n / 4));
+  render(`<h2>Das Dorf schläft …</h2>${rules(['Jeder bekommt geheim eine Rolle.','Die App liest als Erzähler vor, was nachts passiert. Eine Person hält das Handy und liest laut.','Ziel des Dorfs: alle Werwölfe finden. Ziel der Werwölfe: übrig bleiben.'])}
+    <div class="list"><div>🐺 <b>${wolves}</b> Werwolf${wolves > 1 ? 'e' : ''}</div><div>🔮 Seherin · 🧪 Hexe${n < 6 ? ' (erst ab 6 Spielern)' : ''}</div><div>🧑‍🌾 Rest: Dorfbewohner</div></div>
+    <button class="btn" onclick="werwolfStart()">Rollen verteilen</button>`);
+}
+function werwolfStart() {
+  const n = players.length, wolves = Math.max(1, Math.floor(n / 4));
+  const roles = Array(wolves).fill('wolf').concat(['seherin']).concat(n >= 6 ? ['hexe'] : []);
+  while (roles.length < n) roles.push('dorf');
+  const mix = shuffle(roles); ww = { roles: {}, step: 0, night: 1 };
+  players.forEach((p, i) => ww.roles[p] = mix[i]);
+  passAround(players.map(p => { const r = ROLLEN[ww.roles[p]];
+    return { player: p, color: r.c, html: `<span class="huge">${r.e}</span><p class="label muted">Deine Rolle</p><div class="big">${r.n}</div><p>${r.t}</p>` }; }), werwolfNarrate);
+}
+function werwolfNarrate() {
+  const hexe = Object.values(ww.roles).includes('hexe');
+  const steps = [
+    ['🌙', `Nacht ${ww.night}`, 'Alle schließen die Augen. Das Dorf schläft ein.'],
+    ['🐺', 'Werwölfe erwachen', 'Die Werwölfe öffnen die Augen und zeigen lautlos auf ihr Opfer. … Werwölfe, schließt die Augen.'],
+    ['🔮', 'Seherin erwacht', 'Die Seherin öffnet die Augen und zeigt auf eine Person. Der Erzähler zeigt ihr per Daumen: 👍 Dorf oder 👎 Werwolf. … Seherin, schließ die Augen.'],
+    ...(hexe ? [['🧪', 'Hexe erwacht', 'Der Erzähler zeigt der Hexe das Opfer. Will sie es heilen? Will sie jemanden vergiften? … Hexe, schließ die Augen.']] : []),
+    ['☀️', 'Der Tag bricht an', 'Alle öffnen die Augen. Der Erzähler verkündet, wer in der Nacht erwischt wurde.'],
+    ['🗳️', 'Abstimmung', 'Diskutiert! Auf 3-2-1 zeigen alle auf eine Person. Wer die meisten Stimmen hat, scheidet aus und zeigt seine Rolle.']
+  ];
+  const [e, t, txt] = steps[ww.step];
+  render(`<p class="steps">Erzähler · Schritt ${ww.step + 1}/${steps.length}</p>
+    <div class="card flip color"><span class="huge">${e}</span><div class="big">${t}</div><p>${txt}</p></div>
+    <button class="btn" id="nx">${ww.step < steps.length - 1 ? 'Weiter' : 'Nächste Nacht'}</button>
+    <div class="row"><button class="btn sec" onclick="werwolfRoles()">Alle Rollen zeigen</button><button class="btn sec" onclick="home()">Beenden</button></div>`);
+  $('#nx').onclick = () => { vibrate(30); ww.step++; if (ww.step >= steps.length) { ww.step = 0; ww.night++; } werwolfNarrate(); };
+}
+function werwolfRoles() {
+  render(`<div class="card"><p class="label muted">Auflösung</p><div class="list">${players.map(p => { const r = ROLLEN[ww.roles[p]]; return `<div>${r.e} <b>${esc(p)}</b> – ${r.n}</div>`; }).join('')}</div></div>
+    <div class="row"><button class="btn" onclick="werwolfStart()">Neues Spiel</button><button class="btn sec" onclick="werwolfNarrate()">Zurück</button></div>`, { backTo: 'werwolfNarrate()' });
+}
+
+// ================= Geheime Mission =================
+let mis = {};
+function missionSetup() {
+  if (!needPlayers(3, missionSetup)) return;
+  render(`<h2>Pssst …</h2>${rules(['Jeder bekommt eine geheime Mission für die Party.','Erfülle sie, ohne dass es jemand merkt.','Wer eine fremde Mission durchschaut, sagt laut „Erwischt!“ – dann ist die Mission gescheitert.','Am Ende löst die App alle Missionen auf.'])}
+    <button class="btn" onclick="missionStart()">Missionen verteilen</button>`);
+}
+function missionStart() {
+  const m = shuffle(DATA.missionen); mis = {};
+  players.forEach((p, i) => mis[p] = m[i % m.length]);
+  passAround(players.map(p => ({ player: p, html: `<span class="huge">🎯</span><p class="label muted">Deine Mission</p><div class="big" style="font-size:1.5rem">${mis[p]}</div>` })), () => {
+    render(`<div class="card color"><span class="huge">🥳</span><div class="big">Die Party läuft!</div><p class="muted">Erfüllt eure Missionen. Wenn ihr fertig seid, löst hier auf.</p></div>
+      <button class="btn" onclick="missionReveal()">Alle Missionen auflösen</button>`);
+  });
+}
+function missionReveal() {
+  render(`<div class="card"><p class="label muted">Die Missionen</p><div class="list">${players.map(p => `<div><b>${esc(p)}</b><br>${mis[p]}</div>`).join('')}</div></div>
+    <div class="row"><button class="btn" onclick="missionStart()">Neue Runde</button><button class="btn sec" onclick="home()">Menü</button></div>`);
+}
+
+// ================= Kartenspiele (Fragen) =================
+function eher() {
+  render(`<div class="card flip color"><span class="huge">👉</span><div class="big">${draw('eher', DATA.eher)}</div><p class="muted">Auf 3-2-1 zeigen alle gleichzeitig auf eine Person!</p></div>
+    <button class="btn" onclick="eher()">Nächste Frage</button>`);
+}
+function wuerdest() {
+  const [a, b] = draw('wuerdest', DATA.wuerdest);
+  render(`<p class="label muted" style="text-align:center">Würdest du eher …</p>
+    <div class="card flip color" style="min-height:140px;--c1:var(--fragen);--c2:var(--fragen2)"><div class="big">${a}</div></div>
+    <p style="text-align:center;font:600 1.4rem var(--display);margin:10px 0">oder</p>
+    <div class="card flip color" style="min-height:140px;--c1:var(--bluff);--c2:var(--bluff2)"><div class="big">${b}</div></div>
+    <p class="muted" style="text-align:center">Alle stimmen gleichzeitig ab: Daumen hoch = oben, Daumen runter = unten. Die Minderheit erklärt sich!</p>
+    <button class="btn" onclick="wuerdest()">Nächste Frage</button>`);
+}
+function nochNie() {
+  render(`<div class="card flip color"><span class="huge">🙈</span><div class="big">${draw('nochnie', DATA.noch_nie)}</div><p class="muted">Wer es schon gemacht hat, steht auf und erzählt die Geschichte.</p></div>
+    <button class="btn" onclick="nochNie()">Nächste Karte</button>`);
+}
 let wopState = { last: null, truths: {} };
 function wop() {
   if (!needPlayers(2, wop)) return;
   const options = players.length > 1 ? players.filter(p => p !== wopState.last) : players;
-  const p = pick(options); wopState.last = p;
+  const p = pick(options); wopState.last = p; const i = players.indexOf(p);
   const forced = (wopState.truths[p] || 0) >= 3;
-  render(`${backBtn}<div class="card"><p class="muted">Du bist dran</p><div class="big">${esc(p)}</div>
-    ${forced ? '<p>3× Wahrheit hintereinander – jetzt ist Pflicht angesagt! 😈</p>' : '<p class="muted">Wähle mutig …</p>'}</div>
-    <div class="row">${forced ? '' : `<button class="btn" style="background:var(--fragen)" onclick="wopShow(${players.indexOf(p)}, 'wahrheit')">Wahrheit</button>`}
-    <button class="btn" style="background:var(--tempo)" onclick="wopShow(${players.indexOf(p)}, 'pflicht')">Pflicht</button></div>`);
+  render(`<div class="card flip"><p class="label muted">Du bist dran</p><div class="big">${esc(p)}</div>
+    ${forced ? '<p class="hint">3× Wahrheit hintereinander – jetzt ist Pflicht angesagt! 😈</p>' : '<p class="muted">Wähle mutig …</p>'}</div>
+    <div class="row">${forced ? '' : `<button class="btn" style="--c1:var(--fragen);--c2:var(--fragen2)" onclick="wopShow(${i}, 'wahrheit')">Wahrheit</button>`}
+    <button class="btn" style="--c1:var(--tempo);--c2:var(--tempo2)" onclick="wopShow(${i}, 'pflicht')">Pflicht</button></div>`);
 }
 function wopShow(i, type) {
   const p = players[i];
   wopState.truths[p] = type === 'wahrheit' ? (wopState.truths[p] || 0) + 1 : 0;
-  render(`${backBtn}<div class="card" style="background:${type === 'wahrheit' ? 'var(--fragen)' : 'var(--tempo)'}">
-    <p>${type === 'wahrheit' ? 'Wahrheit' : 'Pflicht'} für ${esc(p)}</p><div class="big">${draw(type, DATA[type])}</div></div>
+  const c = type === 'wahrheit' ? 'fragen' : 'tempo';
+  render(`<div class="card flip color" style="--c1:var(--${c});--c2:var(--${c}2)"><p class="label muted">${type === 'wahrheit' ? 'Wahrheit' : 'Pflicht'} für ${esc(p)}</p><div class="big">${draw(type, DATA[type])}</div></div>
     <button class="btn sec" onclick="wop()">Nächste Person</button>`);
 }
-
-// ---------- Skala 1–10 ----------
 function skala() {
   if (!needPlayers(2, skala)) return;
   const p = pick(players);
-  const q = draw('skala', DATA.skala).replace('{name}', esc(p));
-  render(`${backBtn}<div class="card" style="background:var(--fragen)"><div class="big">${q}</div>
-    <p>Alle zeigen gleichzeitig mit den Fingern eine Zahl von 1–10. Dann verrät ${esc(p)} die eigene Einschätzung – wer am nächsten dran ist, bekommt einen Punkt!</p></div>
-    <button class="btn sec" onclick="skala()">Nächste Frage</button>`);
+  render(`<div class="card flip color"><span class="huge">💯</span><div class="big">${draw('skala', DATA.skala).replace('{name}', esc(p))}</div>
+    <p class="muted">Alle zeigen mit den Fingern eine Zahl von 1–10. Dann verrät ${esc(p)} die eigene Einschätzung – wer am nächsten dran ist, bekommt einen Punkt!</p></div>
+    <button class="btn" onclick="skala()">Nächste Frage</button>`);
 }
 
-// ---------- Die Bombe ----------
+// ================= Emoji & Schätzen =================
+function emoji() {
+  const [e, sol] = draw('emoji', DATA.emoji);
+  render(`<div class="card flip"><p class="label muted">Welcher Film ist das?</p><div style="font-size:4rem;line-height:1.2">${e}</div><p class="muted">Wer es zuerst ruft, bekommt den Punkt.</p></div>
+    <button class="btn" id="sol">Lösung zeigen</button>`);
+  $('#sol').onclick = () => {
+    render(`<div class="card flip color"><div style="font-size:3rem">${e}</div><div class="big">${sol}</div></div><button class="btn" onclick="emoji()">Nächstes Rätsel</button>`);
+  };
+}
+function schaetzen() {
+  const [q, a, u] = draw('schaetzen', DATA.schaetzen);
+  render(`<div class="card flip color"><span class="huge">📏</span><div class="big">${q}</div><p class="muted">Jeder sagt (oder schreibt) eine Zahl. Dann auflösen!</p></div>
+    <button class="btn" id="sol">Lösung zeigen</button>`);
+  $('#sol').onclick = () => {
+    render(`<div class="card flip"><p class="muted">${q}</p><div class="huge" style="font-family:var(--display);font-size:3.4rem">${a.toLocaleString('de-DE')} ${u}</div><p class="muted">Wer am nächsten dran war, gewinnt die Runde.</p></div>
+      <button class="btn" onclick="schaetzen()">Nächste Frage</button>`);
+  };
+}
+
+// ================= Die Bombe =================
 function bombeStart() {
-  clearTimers();
-  render(`${backBtn}<h2>💣 Die Bombe</h2>
-    <p class="muted">Eine Kategorie erscheint. Nenne einen passenden Begriff und gib das Handy weiter. Niemand weiß, wann die Bombe explodiert …</p>
-    <button class="btn" style="background:var(--tempo)" onclick="bombeRun()">Bombe scharf machen</button>`);
+  render(`<h2>Tick … tick … tick …</h2>${rules(['Eine Kategorie erscheint.','Nenne einen passenden Begriff und gib das Handy sofort weiter.','Niemand weiß, wann die Bombe explodiert. Wer sie dann hält, verliert!'])}
+    <button class="btn" onclick="bombeRun()">💣 Bombe scharf machen</button>`);
 }
 function bombeRun() {
   clearTimers();
-  const cat = draw('bombe', DATA.bombe);
-  const total = 15000 + Math.random() * 30000, start = Date.now();
-  render(`<div class="card" style="background:var(--tempo)"><p>Kategorie</p><div class="big">${cat}</div>
-    <div class="huge" id="bomb">💣</div><p>Begriff nennen & weitergeben!</p></div>`, false);
+  const cat = draw('bombe', DATA.bombe), total = 15000 + Math.random() * 30000, t0 = Date.now();
+  render(`<div class="card color"><p class="label muted">Kategorie</p><div class="big">${cat}</div><div class="huge" id="bomb" style="font-size:6rem">💣</div><p class="muted">Begriff nennen & weitergeben!</p></div>`, { top: false });
   const tick = () => {
-    const rest = total - (Date.now() - start);
+    const rest = total - (Date.now() - t0);
     if (rest <= 0) return bombeBoom();
-    const el = $('#bomb'); if (el) { el.classList.toggle('pulse'); }
-    vibrate(20);
-    timers.push(setTimeout(tick, Math.max(150, 1000 * rest / total)));
+    const el = $('#bomb'); if (!el) return;
+    el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); vibrate(20);
+    timers.push(setTimeout(tick, Math.max(140, 1000 * rest / total)));
   };
   tick();
 }
 function bombeBoom() {
-  clearTimers(); vibrate([300, 100, 300]);
-  render(`<div class="card boom"><div class="huge">💥</div><div class="big">BUMM!</div><p>Wer das Handy hält, hat verloren!</p></div>
-    <div class="row"><button class="btn" style="background:var(--tempo)" onclick="bombeRun()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
+  clearTimers(); vibrate([400, 100, 400]);
+  render(`<div class="card boom"><div class="huge" style="font-size:6rem">💥</div><div class="big">BUMM!</div><p>Wer das Handy hält, hat verloren!</p></div>
+    <div class="row"><button class="btn" onclick="bombeRun()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
 
-// ---------- Verbotene Wörter ----------
-let tabu = {};
-function tabuSetup() {
-  clearTimers();
-  tabu = { scores: [0, 0], team: 0, round: 1 };
-  render(`${backBtn}<h2>🤐 Verbotene Wörter</h2>
-    <p class="muted">Bildet zwei Teams. Ein Spieler erklärt seinem Team so viele Begriffe wie möglich in 60 Sekunden – ohne die verbotenen Wörter.<br>
-    ✅ Richtig = +1 · ⏭️ Überspringen = 0 · ❌ Verbotenes Wort = −1</p>
-    <button class="btn" style="background:var(--tempo)" onclick="tabuReady()">Los geht's</button>`);
+// ================= Team-Spiele: Verbotene Wörter & Pantomime =================
+let team = {};
+function teamSetup(mode) {
+  const isTabu = mode === 'tabu';
+  team = { mode, scores: [0, 0], team: 0, round: 1, rounds: 3 };
+  render(`<h2>${isTabu ? 'Erklär es – aber richtig!' : 'Kein Wort sagen!'}</h2>
+    ${rules(isTabu
+      ? ['Bildet zwei Teams.','Eine Person erklärt ihrem Team in 60 Sekunden so viele Begriffe wie möglich – ohne die verbotenen Wörter.','✅ Richtig +1 · ⏭️ Weiter 0 · ❌ Verbotenes Wort −1']
+      : ['Bildet zwei Teams.','Eine Person spielt ihrem Team in 60 Sekunden so viele Begriffe wie möglich vor – ohne Worte und Geräusche!','✅ Richtig +1 · ⏭️ Weiter 0'])}
+    <p class="muted">Gespielt werden 3 Runden pro Team.</p>
+    <button class="btn" onclick="teamReady()">Los geht's</button>`);
 }
-function tabuReady() {
+function scoreline() { return `<div class="score"><span>🟣 Team A: ${team.scores[0]}</span><span>Runde ${Math.min(team.round, team.rounds)}/${team.rounds}</span><span>🟠 Team B: ${team.scores[1]}</span></div>`; }
+function teamReady() {
   clearTimers();
-  render(`<div class="score"><span>Team A: ${tabu.scores[0]}</span><span>Team B: ${tabu.scores[1]}</span></div>
-    <div class="card"><p class="muted">Runde ${tabu.round}</p><div class="big">Team ${'AB'[tabu.team]} ist dran</div><p class="muted">Erklärer nimmt das Handy.</p></div>
-    <button class="btn" style="background:var(--tempo)" onclick="tabuRun()">Start (60 s)</button>
-    <button class="btn sec" onclick="home()">Spiel beenden</button>`, false);
+  if (team.round > team.rounds) return teamFinal();
+  render(`${scoreline()}<div class="card color"><span class="huge">${team.team ? '🟠' : '🟣'}</span><div class="big">Team ${'AB'[team.team]} ist dran</div>
+    <p class="muted">Wer ${team.mode === 'tabu' ? 'erklärt' : 'spielt vor'}, nimmt jetzt das Handy.</p></div>
+    <button class="btn" onclick="teamRun()">Start · 60 Sekunden</button>`);
 }
-function tabuRun() {
-  tabu.end = Date.now() + 60000; tabu.points = 0;
-  tabuCard();
+function teamRun() {
+  team.end = Date.now() + 60000; team.points = 0; teamCard();
   timers.push(setInterval(() => {
-    const s = Math.ceil((tabu.end - Date.now()) / 1000);
-    const el = $('#time'); if (el) el.textContent = Math.max(0, s) + ' s';
-    if (s <= 0) tabuEnd();
-  }, 250));
+    const s = Math.max(0, Math.ceil((team.end - Date.now()) / 1000));
+    if ($('#time')) { $('#time').textContent = s + ' s'; $('#pb').style.width = (s / 60 * 100) + '%'; }
+    if (s <= 10 && s > 0) vibrate(15);
+    if (s <= 0) teamEnd();
+  }, 1000));
 }
-function tabuCard() {
-  const [word, forbidden] = draw('tabu', DATA.tabu);
-  const s = Math.max(0, Math.ceil((tabu.end - Date.now()) / 1000));
-  render(`<div class="score"><span>Team ${'AB'[tabu.team]}: ${tabu.points >= 0 ? '+' : ''}${tabu.points}</span><span id="time">${s} s</span></div>
-    <div class="card"><div class="big">${word}</div><ul class="forbidden">${forbidden.map(f => `<li>${f}</li>`).join('')}</ul></div>
-    <div class="row"><button class="btn bad" onclick="tabuPoint(-1)">❌</button><button class="btn sec" onclick="tabuPoint(0)">⏭️</button><button class="btn ok" onclick="tabuPoint(1)">✅</button></div>`, false);
+function teamCard() {
+  const s = Math.max(0, Math.ceil((team.end - Date.now()) / 1000));
+  let inner;
+  if (team.mode === 'tabu') { const [w, f] = draw('tabu', DATA.tabu); inner = `<div class="big">${w}</div><ul class="forbidden">${f.map(x => `<li>🚫 ${x}</li>`).join('')}</ul>`; }
+  else inner = `<span class="huge">🎭</span><div class="big">${draw('pantomime', DATA.pantomime)}</div>`;
+  render(`<div class="score"><span>Team ${'AB'[team.team]}: ${team.points >= 0 ? '+' : ''}${team.points}</span><span class="timer" id="time">${s} s</span></div>
+    <div class="progress"><i id="pb" style="width:${s / 60 * 100}%"></i></div>
+    <div class="card flip">${inner}</div>
+    <div class="row">${team.mode === 'tabu' ? `<button class="btn bad" onclick="teamPoint(-1)">❌</button>` : ''}<button class="btn sec" onclick="teamPoint(0)">⏭️</button><button class="btn ok" onclick="teamPoint(1)">✅</button></div>`, { top: false });
 }
-function tabuPoint(n) { tabu.points += n; vibrate(30); tabuCard(); }
-function tabuEnd() {
+function teamPoint(n) { team.points += n; vibrate(30); teamCard(); }
+function teamEnd() {
   clearTimers(); vibrate([200, 100, 200]);
-  tabu.scores[tabu.team] += tabu.points;
-  const pts = tabu.points;
-  if (tabu.team === 1) tabu.round++;
-  tabu.team = 1 - tabu.team;
-  render(`<div class="card"><div class="huge">⏰</div><div class="big">Zeit ist um!</div><p>${pts} Punkte in dieser Runde</p>
-    <p class="muted">Team A: ${tabu.scores[0]} · Team B: ${tabu.scores[1]}</p></div>
-    <button class="btn" style="background:var(--tempo)" onclick="tabuReady()">Nächstes Team</button>`, false);
+  team.scores[team.team] += team.points;
+  const pts = team.points;
+  if (team.team === 1) team.round++;
+  team.team = 1 - team.team;
+  render(`${scoreline()}<div class="card color"><span class="huge">⏰</span><div class="big">Zeit ist um!</div><p>${pts} Punkt${Math.abs(pts) === 1 ? '' : 'e'} in dieser Runde</p></div>
+    <button class="btn" onclick="teamReady()">${team.round > team.rounds ? 'Ergebnis zeigen' : 'Nächstes Team'}</button>`, { top: false });
+}
+function teamFinal() {
+  const [a, b] = team.scores, txt = a === b ? 'Unentschieden!' : `Team ${a > b ? 'A 🟣' : 'B 🟠'} gewinnt!`;
+  render(`<div class="card flip color"><span class="huge">🏆</span><div class="big">${txt}</div><p>Team A: ${a} · Team B: ${b}</p></div>
+    <div class="row"><button class="btn" onclick="teamSetup(team.mode)">Neues Spiel</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
 
-// ---------- Glücksrad ----------
+// ================= Kettenreaktion =================
+let kette = {};
+function ketteSetup() {
+  if (!needPlayers(2, ketteSetup)) return;
+  render(`<h2>Schnell, schneller, raus!</h2>${rules(['Die App nennt einen Anfangsbuchstaben.','Wer dran ist, sagt ein Wort damit – das nächste Wort muss mit dem <b>letzten Buchstaben</b> des vorherigen beginnen.','Nach jedem Wort auf „Weiter“ tippen. Die Zeit wird jedes Mal kürzer!','Wer zu langsam ist, fliegt raus. Wer übrig bleibt, gewinnt.'])}
+    <button class="btn" onclick="ketteStart()">Start</button>`);
+}
+function ketteStart() {
+  kette = { alive: shuffle(players), idx: 0, limit: 10, letter: pick('ABDEFGHKLMNPRSTW'.split('')) };
+  ketteTurn();
+}
+function ketteTurn() {
+  clearTimers();
+  if (kette.alive.length === 1) {
+    vibrate([100, 50, 100]);
+    return render(`<div class="card flip color"><span class="huge">🏆</span><div class="big">${esc(kette.alive[0])} gewinnt!</div></div>
+      <div class="row"><button class="btn" onclick="ketteStart()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
+  }
+  const p = kette.alive[kette.idx % kette.alive.length], end = Date.now() + kette.limit * 1000, total = kette.limit;
+  render(`<div class="score"><span>${kette.alive.length} im Spiel</span><span class="timer" id="t">${total.toFixed(1)} s</span></div>
+    <div class="progress"><i id="pb" style="width:100%;transition:none"></i></div>
+    <div class="card color"><p class="label muted">Dran ist</p><div class="big">${esc(p)}</div>
+    ${kette.letter ? `<p class="muted">Erstes Wort mit</p><div class="huge" style="font-family:var(--display)">${kette.letter}</div>` : '<p class="muted">Letzter Buchstabe des vorherigen Worts!</p>'}</div>
+    <button class="btn ok" id="w">✅ Weiter</button>`);
+  $('#w').onclick = () => { vibrate(25); kette.letter = null; kette.idx++; kette.limit = Math.max(3, kette.limit - 0.5); ketteTurn(); };
+  const loop = () => {
+    const rest = (end - Date.now()) / 1000;
+    if (!$('#t')) return;
+    if (rest <= 0) return ketteOut(p);
+    $('#t').textContent = rest.toFixed(1) + ' s'; $('#pb').style.width = (rest / total * 100) + '%';
+    window._raf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function ketteOut(p) {
+  vibrate([300, 80, 300]);
+  kette.alive = kette.alive.filter(x => x !== p); kette.idx = kette.idx % Math.max(1, kette.alive.length); kette.limit = 10; kette.letter = pick('ABDEFGHKLMNPRSTW'.split(''));
+  render(`<div class="card boom"><span class="huge">⌛</span><div class="big">${esc(p)} ist raus!</div><p>Neue Kette, neuer Buchstabe.</p></div>
+    <button class="btn" onclick="ketteTurn()">Weiter</button>`);
+}
+
+// ================= Glücksrad =================
 let wheelRot = 0;
 function wheel() {
   if (!needPlayers(2, wheel)) return;
-  const colors = ['#8b5cf6','#ec4899','#f97316','#14b8a6','#3b82f6','#eab308','#22c55e','#ef4444'];
+  const cols = ['#7c4dff','#ff3d7f','#ff7a1a','#00bfa5','#3b82f6','#eab308','#22c55e','#ef4444'];
   const n = players.length, seg = 360 / n;
-  const grad = players.map((_, i) => `${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
-  const labels = players.map((p, i) => {
-    const a = (i + 0.5) * seg;
-    return `<span style="position:absolute;left:50%;top:50%;transform:rotate(${a}deg) translateY(-105px) rotate(-${a}deg) translate(-50%,-50%);font-weight:700;font-size:.85rem;text-shadow:0 1px 3px #000">${esc(p)}</span>`;
-  }).join('');
-  render(`${backBtn}<h2>🎡 Glücksrad</h2>
-    <div class="wheel-wrap"><div class="pointer">🔻</div><div class="wheel" id="wheel" style="background:conic-gradient(${grad});transform:rotate(${wheelRot}deg)"><div style="position:relative;width:100%;height:100%">${labels}</div></div></div>
-    <div class="card" style="min-height:auto;padding:16px"><div class="big" id="result">Dreh das Rad!</div></div>
-    <button class="btn" style="background:var(--tool)" id="spin" onclick="spin()">Drehen</button>`);
+  const grad = players.map((_, i) => `${cols[i % cols.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
+  const labels = players.map((p, i) => { const a = (i + 0.5) * seg;
+    return `<span style="position:absolute;left:50%;top:50%;transform:rotate(${a}deg) translateY(-31cqw) rotate(-${a}deg) translate(-50%,-50%);transform-origin:0 0;font:600 .95rem var(--display);text-shadow:0 1px 3px #000;white-space:nowrap">${esc(p)}</span>`; }).join('');
+  render(`<div class="wheel-wrap"><div class="pointer"></div><div class="wheel" id="wheel" style="background:conic-gradient(${grad});transform:rotate(${wheelRot}deg)"><div style="position:relative;width:100%;height:100%">${labels}</div></div><div class="wheel-hub"></div></div>
+    <div class="card" style="min-height:auto;padding:18px"><div class="big" id="result">Dreh das Rad!</div></div>
+    <button class="btn" id="spin" onclick="spin()">Drehen</button>`);
 }
 function spin() {
   const n = players.length, seg = 360 / n;
@@ -347,12 +720,30 @@ function spin() {
   $('#wheel').style.transform = `rotate(${wheelRot}deg)`;
   $('#spin').disabled = true; $('#result').textContent = '…';
   timers.push(setTimeout(() => {
-    // Zeiger steht oben (0°). Welches Segment liegt nach der Drehung dort?
-    const angle = (360 - (wheelRot % 360)) % 360;
-    const winner = players[Math.floor(angle / seg)];
-    $('#result').textContent = '🎉 ' + winner;
-    $('#spin').disabled = false; vibrate(100);
-  }, 4100));
+    const angle = (360 - (wheelRot % 360)) % 360;   // Zeiger oben = 0°
+    $('#result').textContent = '🎉 ' + players[Math.floor(angle / seg)];
+    $('#spin').disabled = false; vibrate(120);
+  }, 4300));
+}
+
+// ================= Würfel & Münze =================
+let diceCount = 2;
+function wuerfel() {
+  render(`<div class="chips" style="justify-content:center">${[1, 2, 3].map(n => `<button class="chip" style="${n === diceCount ? 'background:var(--tool);color:#002b25' : ''}" onclick="diceCount=${n};wuerfel()">${n} Würfel</button>`).join('')}</div>
+    <div class="card"><div class="dice" id="dice">${Array(diceCount).fill('<div class="die">?</div>').join('')}</div><p class="muted" id="sum">Tippen zum Würfeln</p></div>
+    <button class="btn" onclick="roll()">🎲 Würfeln</button>
+    <div class="card" style="margin-top:18px;min-height:220px"><div class="coin" id="coin">?</div></div>
+    <button class="btn sec" onclick="flip()">🪙 Münze werfen</button>`);
+}
+function roll() {
+  const v = Array.from({ length: diceCount }, () => 1 + Math.floor(Math.random() * 6));
+  $('#dice').innerHTML = v.map(x => `<div class="die roll">${x}</div>`).join('');
+  $('#sum').textContent = diceCount > 1 ? 'Summe: ' + v.reduce((a, b) => a + b) : ' '; vibrate(40);
+}
+function flip() {
+  const c = $('#coin'); c.classList.remove('coinflip'); void c.offsetWidth; c.textContent = '';
+  c.classList.add('coinflip'); vibrate(30);
+  timers.push(setTimeout(() => { c.textContent = Math.random() < .5 ? 'KOPF' : 'ZAHL'; vibrate(60); }, 900));
 }
 
 home();
