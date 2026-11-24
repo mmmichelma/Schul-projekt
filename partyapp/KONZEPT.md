@@ -4,7 +4,7 @@
 > **Das Smartphone ist der Spielleiter, im Mittelpunkt stehen die Menschen.**
 > Name, Design, Fragen und Inhalte sind eigene Entwürfe.
 
-Ein spielbarer Prototyp liegt in `index.html` (einfach im Browser öffnen).
+Ein spielbarer Prototyp liegt in `www/index.html` (einfach im Browser öffnen), die Android-App in `android/`.
 
 ---
 

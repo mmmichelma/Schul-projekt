@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Partytüte -->
+    <path android:fillColor="#FDE047" android:pathData="M34,76 L48,40 L70,62 Z" />
+    <path android:fillColor="#F97316" android:pathData="M40,61 L44,51 L58,65 L48,69 Z" />
+    <!-- Konfetti -->
+    <path android:fillColor="#FFFFFF" android:pathData="M60,34 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <path android:fillColor="#EC4899" android:pathData="M70,44 l6,-3 l2,4 l-6,3 Z" />
+    <path android:fillColor="#14B8A6" android:pathData="M50,30 l3,-6 l4,2 l-3,6 Z" />
+    <path android:fillColor="#FDE047" android:pathData="M76,56 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M66,26 l5,0 l0,5 l-5,0 Z" />
+</vector>

@@ -1,0 +1,19 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'de.schulprojekt.konfetti'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'de.schulprojekt.konfetti'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+    // Die Web-Spiele aus partyapp/www werden direkt als App-Inhalt eingebunden
+    sourceSets { main { assets.srcDirs = ['../../www'] } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
