@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Konfetti Partyspiele</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
 <style>
+  /* FONTS */
+  @font-face { font-family: "Fredoka"; src: url("fonts/fredoka.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+  @font-face { font-family: "Nunito"; src: url("fonts/nunito.woff2") format("woff2"); font-weight: 200 1000; font-display: swap; }
+  /* /FONTS */
   /* Layout: eine Spalte, Kartenstapel; Startseite = Kachelraster nach Spielgruppen */
   :root {
     color-scheme: dark;
@@ -152,11 +154,33 @@
           background: radial-gradient(circle at 35% 30%, #fff3b0, var(--gold) 45%, #c79100); box-shadow: inset 0 0 0 8px rgba(0,0,0,.08); }
   .coinflip { animation: coin .9s ease; }
   @keyframes coin { 0% { transform: rotateX(0) } 100% { transform: rotateX(1800deg) } }
+  .hero-actions { position: absolute; top: 14px; right: 0; display: flex; gap: 8px; z-index: 1; }
+  .icon-btn { width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 1.2rem; cursor: pointer; display: grid; place-items: center; }
+  .surprise { margin-top: 12px; display: flex; align-items: center; gap: 12px; width: 100%; border: 0; border-radius: 20px; padding: 14px 16px; cursor: pointer; color: #3a2400; text-align: left;
+              background: linear-gradient(120deg, var(--gold), #ffb74d); font: inherit; box-shadow: 0 12px 24px -14px var(--gold); }
+  .surprise b { font: 600 1.15rem var(--display); display: block; }
+  .surprise small { font-weight: 700; opacity: .8; }
+  .surprise .e { font-size: 1.8rem; }
+  .setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-top: 10px; }
+  .setting b { font-family: var(--display); font-weight: 600; font-size: 1.1rem; display: block; }
+  .setting small { color: var(--muted); font-weight: 700; }
+  .switch { width: 58px; height: 34px; border-radius: 99px; border: 0; background: var(--surface2); position: relative; cursor: pointer; flex: none; transition: background .2s; }
+  .switch::after { content: ""; position: absolute; top: 4px; left: 4px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .switch[aria-checked="true"] { background: var(--ok); }
+  .switch[aria-checked="true"]::after { transform: translateX(24px); }
+  #party { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+  .tilt { font-size: .95rem; color: var(--muted); font-weight: 700; }
+  .flash-ok { animation: fok .35s; } .flash-bad { animation: fbad .35s; }
+  @keyframes fok { 0% { box-shadow: inset 0 0 0 999px rgba(34,197,94,.55); } }
+  @keyframes fbad { 0% { box-shadow: inset 0 0 0 999px rgba(239,68,68,.45); } }
+  .help { margin-top: 14px; font-size: .95rem; text-align: center; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <main id="app"></main>
+<div id="bar"></div>
+<canvas id="party"></canvas>
 
 <script>
 // ================= Inhalte =================
@@ -175,7 +199,7 @@ const DATA = {
     ['Zirkus',['Clown','Akrobatin','Dompteur','Zuschauerin','Zauberer']], ['Raumstation',['Astronautin','Ingenieur','Alien','Ärztin','Kommandant']],
     ['Supermarkt',['Kassiererin','Kunde','Lagerist','Kind','Filialleiterin']], ['Kino',['Zuschauer','Popcorn-Verkäuferin','Filmvorführer','Kritikerin','Pärchen']],
     ['Strand',['Rettungsschwimmerin','Surfer','Eisverkäufer','Tourist','Kind']], ['Bauernhof',['Bäuerin','Traktorfahrer','Tierärztin','Erntehelfer','Kind']],
-    ['Restaurant',['Köchin','Kellner','Gast','Kritiker','Tellerwäscher']], ['Polizeistation',['Kommissarin','Verdächtiger','Zeuge','Anwältin','Praktikant']]
+    ['Restaurant',['Köchin','Kellner','Gast','Kritiker','Tellerwäscher']], ['Polizeistation',['Kommissarin','Verdächtiger','Zeuge','Anwältin','Praktikant']], ['Hochzeit',['Braut','Bräutigam','Fotografin','Gast','DJ']], ['Skigebiet',['Skilehrerin','Snowboarder','Liftwart','Anfänger','Hüttenwirt']], ['U-Boot',['Kapitän','Funkerin','Koch','Taucher','Navigator']], ['Fußballstadion',['Torwart','Fan','Schiedsrichterin','Trainer','Würstchenverkäufer']]
   ],
   eher: [
     'Wer würde eher im Urlaub den Reisepass vergessen?','Wer würde eher bei einer Quizshow gewinnen?','Wer würde eher eine Woche ohne Handy überleben?',
@@ -183,7 +207,7 @@ const DATA = {
     'Wer würde eher heimlich die letzte Pizza essen?','Wer würde eher in einer Zombie-Apokalypse überleben?','Wer würde eher den Wecker zehnmal snoozen?',
     'Wer würde eher ein eigenes Unternehmen gründen?','Wer würde eher bei einem Horrorfilm schreien?','Wer würde eher mit Tieren sprechen, als wären es Menschen?',
     'Wer würde eher Präsident:in werden?','Wer würde eher im Kino einschlafen?','Wer würde eher eine Million im Lotto gewinnen – und alles verlieren?',
-    'Wer würde eher auf einer einsamen Insel überleben?','Wer würde eher ein Buch schreiben?','Wer würde eher den Geburtstag der besten Freundin vergessen?',
+    'Wer würde eher auf einer einsamen Insel überleben?','Wer würde eher als Erstes bei einer Wanderung jammern?','Wer würde eher einen Weltrekord aufstellen?','Wer würde eher im Supermarkt die Einkaufsliste vergessen?','Wer würde eher eine Spinne retten statt sie zu töten?','Wer würde eher bei Mario Kart schummeln?','Wer würde eher in einem Musikvideo mitspielen?','Wer würde eher sein Handy in die Toilette fallen lassen?','Wer würde eher zum Mond fliegen?','Wer würde eher ein Buch schreiben?','Wer würde eher den Geburtstag der besten Freundin vergessen?',
     'Wer würde eher 24 Stunden am Stück zocken?','Wer würde eher bei einer Talentshow mitmachen?','Wer würde eher aus Versehen die Lehrkraft „Mama“ nennen?'
   ],
   wuerdest: [
@@ -191,7 +215,7 @@ const DATA = {
     ['nur noch Pizza essen','nie wieder Pizza essen'],['in der Vergangenheit leben','in der Zukunft leben'],['mit Tieren sprechen können','alle Sprachen sprechen können'],
     ['ein Jahr ohne Handy','ein Jahr ohne Freunde treffen'],['immer singen statt sprechen','immer tanzen statt gehen'],['im Dschungel wohnen','in der Antarktis wohnen'],
     ['Gedanken lesen können','die Zukunft sehen können'],['nur flüstern können','nur schreien können'],['ein Drache als Haustier','ein Einhorn als Haustier'],
-    ['nie wieder Süßes','nie wieder Chips'],['berühmt sein','superreich sein, aber niemand kennt dich'],['jeden Tag Schuluniform','jeden Tag ein Clownskostüm']
+    ['nie wieder Süßes','nie wieder Chips'],['einen Tag lang Lehrkraft sein','einen Tag lang Bürgermeister:in sein'],['nur noch Kaltes trinken','nur noch Warmes trinken'],['in einem Baumhaus wohnen','in einem Hausboot wohnen'],['jeden Traum erinnern','nie wieder Albträume'],['ein Jahr Sommerferien','jede Woche ein extra freier Tag'],['dein Leben als Film sehen','dein Leben als Videospiel spielen'],['berühmt sein','superreich sein, aber niemand kennt dich'],['jeden Tag Schuluniform','jeden Tag ein Clownskostüm']
   ],
   noch_nie: [
     'Ich habe noch nie eine ganze Serie an einem Wochenende geschaut.','Ich habe noch nie eine Nachricht an die falsche Person geschickt.',
@@ -199,10 +223,10 @@ const DATA = {
     'Ich habe noch nie einen Knochen gebrochen.','Ich habe noch nie ein Tier aus dem Garten gerettet.','Ich habe noch nie bei einem Film geweint.',
     'Ich habe noch nie heimlich die Hausaufgaben abgeschrieben.','Ich habe noch nie den Namen von jemandem vergessen, direkt nachdem er sich vorgestellt hat.',
     'Ich habe noch nie in einem Zelt übernachtet.','Ich habe noch nie auf einer Bühne gestanden.','Ich habe noch nie eine Pflanze sterben lassen.',
-    'Ich habe noch nie eine ganze Pizza allein gegessen.','Ich habe noch nie mit Absicht ein Video viral gehen lassen wollen.'
+    'Ich habe noch nie eine ganze Pizza allein gegessen.','Ich habe noch nie verschlafen und den Bus verpasst.','Ich habe noch nie ein Instrument gespielt.','Ich habe noch nie bei einem Spiel absichtlich verloren.','Ich habe noch nie etwas Kaputtes heimlich versteckt.','Ich habe noch nie im Meer geschwommen.','Ich habe noch nie mit einem Promi gesprochen.','Ich habe noch nie mit Absicht ein Video viral gehen lassen wollen.'
   ],
   wahrheit: [
-    'Was war dein peinlichster Moment in der Schule?','Wen hier würdest du auf eine einsame Insel mitnehmen?','Was ist das Seltsamste, das du je gegessen hast?',
+    'Was war dein peinlichster Moment in der Schule?','Wen hier würdest du auf eine einsame Insel mitnehmen?','Was ist das Seltsamste, das du je gegessen hast?','Was war dein Lieblingsspielzeug als Kind?','Welche Superkraft hättest du gern und warum?','Was ist das Mutigste, das du je gemacht hast?','Worüber hast du zuletzt so richtig gelacht?',
     'Welche App nutzt du heimlich am meisten?','Was war die beste Ausrede, die du je benutzt hast?','Welches Lied hörst du heimlich, obwohl es peinlich ist?',
     'Was würdest du mit 1 Million Euro als Erstes machen?','Was ist deine merkwürdigste Angewohnheit?','Wovor hast du Angst, obwohl es albern ist?',
     'Welche Person hier kennst du am längsten?','Was war dein schlimmstes Geschenk?','Welchen Promi würdest du gern einen Tag lang sein?'
@@ -211,43 +235,50 @@ const DATA = {
     'Sprich bis zu deiner nächsten Runde nur noch in Reimen.','Mach 10 Kniebeugen und zähle laut auf Englisch.','Imitiere eine Lehrkraft deiner Wahl – die anderen raten.',
     'Sing den Refrain deines Lieblingslieds.','Erzähle einen Witz. Wenn keiner lacht: noch einen.','Lass die Gruppe dein Hintergrundbild für 1 Minute aussuchen.',
     'Sprich 1 Minute wie ein Nachrichtensprecher über dein Frühstück.','Mach deinen besten Roboter-Tanz für 15 Sekunden.','Sprich mit Akzent, bis du wieder dran bist.',
-    'Balanciere 30 Sekunden auf einem Bein.','Mach ein Tiergeräusch – die anderen raten das Tier.','Erfinde ein Gedicht über die Person links neben dir.'
+    'Balanciere 30 Sekunden auf einem Bein.','Sag das Alphabet rückwärts von M bis A.','Erzähle die Geschichte von Rotkäppchen in 30 Sekunden.','Mach 20 Sekunden lang nur Pinguin-Schritte.','Zeige deinen besten Werbespot für eine Zahnbürste.','Mach ein Tiergeräusch – die anderen raten das Tier.','Erfinde ein Gedicht über die Person links neben dir.'
   ],
   skala: [
     'Wie chaotisch ist {name}?','Wie gut kann {name} kochen?','Wie wahrscheinlich ist es, dass {name} zu spät kommt?','Wie sportlich ist {name}?',
     'Wie gut kann {name} ein Geheimnis bewahren?','Wie abenteuerlustig ist {name}?','Wie gut ist {name} im Lügen?','Wie viel Drama verträgt {name}?',
-    'Wie gut kann {name} singen?','Wie ordentlich ist das Zimmer von {name}?','Wie mutig ist {name} bei Horrorfilmen?','Wie gut wäre {name} als Lehrkraft?'
+    'Wie gut kann {name} singen?','Wie gut wäre {name} in einer Survival-Show?','Wie lustig ist {name} morgens um 7 Uhr?','Wie gut kann {name} tanzen?','Wie ordentlich ist das Zimmer von {name}?','Wie mutig ist {name} bei Horrorfilmen?','Wie gut wäre {name} als Lehrkraft?'
   ],
   bombe: ['Obstsorten','Automarken','Länder in Europa','Dinge im Badezimmer','Sportarten','Berufe','Tiere mit vier Beinen','Schulfächer','Social-Media-Apps',
-          'Dinge im Kühlschrank','Musikinstrumente','Farben','Hauptstädte','Gemüse','Disney-Filme','Wörter mit „Sch“','Dinge, die fliegen','Körperteile','Süßigkeiten','Dinge am Strand'],
+          'Dinge im Kühlschrank','Musikinstrumente','Dinge, die rot sind','Dinge in der Schule','Sachen zum Anziehen','Spiele','Dinge, die man im Urlaub braucht','Tiere im Wasser','Marken','Farben','Hauptstädte','Gemüse','Disney-Filme','Wörter mit „Sch“','Dinge, die fliegen','Körperteile','Süßigkeiten','Dinge am Strand'],
   tabu: [
     ['Schule',['Lehrer','Unterricht','Klasse','lernen']], ['Fahrrad',['Rad','treten','Lenker','fahren']], ['Pizza',['Italien','Käse','Teig','Ofen']],
     ['Handy',['Telefon','Smartphone','anrufen','App']], ['Sommer',['Sonne','warm','Ferien','Jahreszeit']], ['Fußball',['Tor','Ball','Spiel','Mannschaft']],
     ['Geburtstag',['Kuchen','Feier','Geschenk','Jahr']], ['Zahnbürste',['Zähne','putzen','Zahnpasta','Bad']], ['Kino',['Film','Popcorn','Leinwand','Ticket']],
     ['Schnee',['weiß','Winter','kalt','Flocke']], ['Hausaufgaben',['Schule','Lehrer','erledigen','Heft']], ['Weihnachten',['Baum','Geschenke','Dezember','Fest']],
     ['Polizei',['Verbrecher','Blaulicht','Auto','Gesetz']], ['Gitarre',['Saiten','Instrument','spielen','Musik']], ['Regenschirm',['Regen','nass','aufspannen','Wetter']],
-    ['Vampir',['Blut','Zähne','Dracula','Nacht']], ['Kaffee',['trinken','Bohne','Tasse','wach']], ['Urlaub',['Reise','Ferien','Hotel','Koffer']]
+    ['Vampir',['Blut','Zähne','Dracula','Nacht']], ['Kaffee',['trinken','Bohne','Tasse','wach']], ['Urlaub',['Reise','Ferien','Hotel','Koffer']], ['Zahnarzt',['Zähne','Bohrer','Praxis','Schmerzen']], ['Kühlschrank',['kalt','Küche','Essen','Gerät']], ['Drache',['Feuer','fliegen','Fantasie','Ritter']], ['Mathe',['Zahlen','rechnen','Schule','Fach']], ['Feuerwerk',['Silvester','knallen','Himmel','Rakete']], ['Brille',['Augen','sehen','Gläser','Nase']]
   ],
   pantomime: ['Zähne putzen','Fallschirmspringen','Hund ausführen','Pizza backen','Auto waschen','Achterbahn fahren','Schneemann bauen','Gitarre spielen',
               'Angeln','Zelt aufbauen','Elefant','Superheld','Ballett tanzen','Kaugummi kleben','Spinne entdecken','Selfie machen','Fensterputzer','Bowling',
-              'Surfen','Zug verpassen','Geschenk auspacken','Zauberer','Tennis','Wäsche aufhängen'],
+              'Surfen','Zug verpassen','Geschenk auspacken','Zauberer','Tennis','Wäsche aufhängen','Pfannkuchen wenden','Bergsteigen','Schlafwandeln','Dirigent','Fotograf','Hula-Hoop','Kuh melken','Taucher','Zahnschmerzen','Staubsaugen','Bienenstich','Seiltänzer'],
   emoji: [
     ['🦁👑','Der König der Löwen'],['❄️👸','Die Eiskönigin'],['🕷️🧑','Spider-Man'],['🧙‍♂️💍','Der Herr der Ringe'],['🚢🧊💔','Titanic'],['🐠🔍','Findet Nemo'],
     ['🦖🏝️','Jurassic Park'],['🧸🤠','Toy Story'],['⚡👓🧙','Harry Potter'],['🐼🥋','Kung Fu Panda'],['👻🚫','Ghostbusters'],['🍫🏭','Charlie und die Schokoladenfabrik'],
-    ['🧜‍♀️🌊','Arielle, die Meerjungfrau'],['🐀👨‍🍳','Ratatouille'],['🎈🏠','Oben'],['🦇🧑','Batman'],['🍝🐶❤️','Susi und Strolch'],['🏴‍☠️💀⚓','Fluch der Karibik']
+    ['🧜‍♀️🌊','Arielle, die Meerjungfrau'],['🐀👨‍🍳','Ratatouille'],['🎈🏠','Oben'],['🦇🧑','Batman'],['🍝🐶❤️','Susi und Strolch'],['🏴‍☠️💀⚓','Fluch der Karibik'],['🐝🎬','Bee Movie'],['🐉🏠🧒','Drachenzähmen leicht gemacht'],['🦸‍♂️🛡️⭐','Captain America'],['👽📞🏠','E.T.'],['🧞‍♂️🪔','Aladdin'],['🐵🍌🏙️','King Kong'],['🍯🐻','Winnie Puuh'],['🐟🐟👀','Findet Dorie'],['🚗⚡🏁','Cars']
   ],
   schaetzen: [
     ['Wie viele Knochen hat ein erwachsener Mensch?',206,''],['Wie hoch ist der Eiffelturm (in Metern)?',330,'m'],['Wie viele Länder gibt es in Europa (ungefähr)?',44,''],
     ['Wie viele Tasten hat ein Klavier?',88,''],['Wie alt kann eine Riesenschildkröte werden (Jahre)?',190,'Jahre'],['Wie viele Einwohner hat Berlin (in Millionen)?',3.7,'Mio.'],
     ['Wie lang ist die Chinesische Mauer (in km)?',21196,'km'],['Wie viele Herzen hat ein Oktopus?',3,''],['Wie schnell kann ein Gepard laufen (km/h)?',110,'km/h'],
     ['Wie viele Minuten hat eine Woche?',10080,''],['In welchem Jahr fiel die Berliner Mauer?',1989,''],['Wie viele Zähne hat ein erwachsener Mensch?',32,''],
-    ['Wie tief ist der tiefste Punkt im Meer (in Metern)?',10994,'m'],['Wie viele Bundesländer hat Deutschland?',16,'']
+    ['Wie tief ist der tiefste Punkt im Meer (in Metern)?',10994,'m'],['Wie viele Bundesländer hat Deutschland?',16,''],['Wie viele Liter Blut hat ein Erwachsener (ungefähr)?',5,'Liter'],['Wie hoch ist die Zugspitze (in Metern)?',2962,'m'],['Wie viele Beine hat eine Spinne?',8,''],['Wie viele Kilometer ist der Mond entfernt (ungefähr)?',384400,'km'],['Wie viele Sekunden hat ein Tag?',86400,''],['Wie schwer ist ein Blauwal-Herz (in kg, ungefähr)?',180,'kg']
   ],
+  stirn: {
+    'Tiere': ['Elefant','Pinguin','Giraffe','Känguru','Schnecke','Papagei','Krake','Faultier','Löwe','Frosch','Eichhörnchen','Wal','Huhn','Zebra','Fledermaus','Hai','Schildkröte','Igel','Kamel','Flamingo'],
+    'Berufe': ['Feuerwehrfrau','Zahnarzt','Pilotin','Bäcker','Polizistin','Astronaut','Friseurin','Koch','Tierarzt','Lehrerin','Clown','Detektiv','Gärtnerin','Müllabfuhr','Rennfahrerin','DJ'],
+    'Essen': ['Spaghetti','Döner','Zuckerwatte','Sushi','Pfannkuchen','Brezel','Popcorn','Wassermelone','Currywurst','Eis am Stiel','Pizza Hawaii','Gummibärchen','Croissant','Nachos','Rosenkohl'],
+    'Fantasie': ['Drache','Einhorn','Vampir','Zauberer','Meerjungfrau','Roboter','Geist','Pirat','Ritter','Alien','Zombie','Fee','Riese','Superheld','Ninja','Hexe'],
+    'Alltag': ['Zahnbürste','Regenschirm','Wecker','Fernbedienung','Staubsauger','Kühlschrank','Rucksack','Ladekabel','Sonnenbrille','Kopfhörer','Schlüssel','Toaster','Handtuch','Kerze','Briefkasten']
+  },
   missionen: [
     'Bring jemanden dazu, das Wort „Banane“ zu sagen.','Gib drei verschiedenen Personen ein Kompliment.','Bring jemanden dazu, dir ein Glas Wasser zu holen.',
     'Benutze das Wort „fantastisch“ fünfmal, ohne dass es auffällt.','Bring jemanden dazu, die Uhrzeit zu sagen.','Sorge dafür, dass jemand ein Lied anstimmt.',
     'Bring zwei Personen dazu, sich abzuklatschen.','Bring jemanden dazu, über das Wetter zu reden.','Lass jemanden ein Foto von dir machen.',
-    'Bring jemanden dazu, „Ich weiß es nicht“ zu sagen.','Imitiere unauffällig die Sitzhaltung einer anderen Person für 2 Minuten.','Bring jemanden dazu, sein Lieblingsessen zu nennen.'
+    'Bring jemanden dazu, „Ich weiß es nicht“ zu sagen.','Imitiere unauffällig die Sitzhaltung einer anderen Person für 2 Minuten.','Bring jemanden dazu, sein Lieblingsessen zu nennen.','Bring jemanden dazu, „Wie bitte?“ zu sagen.','Bring jemanden dazu, dich zu umarmen.','Erzähle eine erfundene Geschichte, die jemand glaubt.','Bring jemanden dazu, auf die Uhr zu schauen.'
   ]
 };
 
@@ -255,7 +286,67 @@ const DATA = {
 const $ = s => document.querySelector(s);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+let settings = { sound: true, vibe: true };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('konfetti-settings')) || {}); } catch (e) {}
+const saveSettings = () => { try { localStorage.setItem('konfetti-settings', JSON.stringify(settings)); } catch (e) {} };
+const vibrate = ms => { if (!settings.vibe) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+
+// Kleine Soundeffekte, direkt im Browser erzeugt (keine Audiodateien nötig)
+let actx = null;
+function tone(freq, dur, type = 'sine', vol = .18, delay = 0, slide = 0) {
+  const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + .02);
+}
+function noise(dur, vol = .5) {
+  const b = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.5);
+  const src = actx.createBufferSource(), g = actx.createGain(), f = actx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = 900; src.buffer = b; g.gain.value = vol;
+  src.connect(f).connect(g).connect(actx.destination); src.start();
+}
+function sfx(name) {
+  if (!settings.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    ({
+      tap: () => tone(520, .06, 'triangle', .07),
+      flip: () => { tone(380, .09, 'triangle', .12); tone(760, .12, 'triangle', .1, .06); },
+      tick: () => tone(1100, .04, 'square', .06),
+      ok: () => { tone(660, .1, 'triangle', .14); tone(990, .16, 'triangle', .14, .08); },
+      bad: () => tone(220, .25, 'sawtooth', .1, 0, -90),
+      skip: () => tone(440, .08, 'triangle', .08, 0, -120),
+      boom: () => { noise(1.2, .9); tone(90, .8, 'sine', .5, 0, -60); },
+      alarm: () => [0, .18, .36].forEach(d => tone(880, .14, 'square', .1, d)),
+      win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, .28, 'triangle', .15, i * .11)),
+      spin: () => tone(700, .03, 'triangle', .06),
+      coin: () => { tone(1500, .08, 'sine', .1); tone(2000, .2, 'sine', .08, .07); }
+    })[name]();
+  } catch (e) {}
+}
+document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.dataset.quiet) sfx('tap'); }, true);
+
+// Konfetti-Explosion über den ganzen Bildschirm (Gewinner, Auflösung)
+function celebrate() {
+  sfx('win');
+  const cv = $('#party'); if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = cv.getContext('2d'), dpr = devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cols = ['#ffd54a','#ff3d7f','#7c4dff','#00bfa5','#ff7a1a','#b388ff','#ffffff'];
+  const bits = Array.from({ length: 140 }, () => { const a = -Math.PI / 2 + (Math.random() - .5) * 1.4, v = 9 + Math.random() * 9;
+    return { x: W / 2, y: H * .62, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: Math.random() * 6, vr: (Math.random() - .5) * .4, w: 5 + Math.random() * 6, h: 8 + Math.random() * 8, c: cols[Math.floor(Math.random() * cols.length)] }; });
+  let t = 0; cancelAnimationFrame(window._party);
+  const frame = () => {
+    ctx.clearRect(0, 0, W, H); t++;
+    bits.forEach(b => { b.vy += .28; b.vx *= .985; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.globalAlpha = Math.max(0, 1 - t / 150); ctx.fillStyle = b.c; ctx.fillRect(-b.w / 2, -b.h / 2, b.w, Math.abs(Math.cos(b.r * 2)) * b.h + 1); ctx.restore(); });
+    if (t < 150) window._party = requestAnimationFrame(frame); else ctx.clearRect(0, 0, W, H);
+  };
+  frame();
+}
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const decks = {};
 const draw = (key, arr) => { if (!decks[key] || !decks[key].length) decks[key] = shuffle(arr); return decks[key].pop(); };
@@ -266,7 +357,7 @@ try { players = JSON.parse(localStorage.getItem('konfetti-players')) || []; } ca
 const savePlayers = () => { try { localStorage.setItem('konfetti-players', JSON.stringify(players)); } catch (e) {} };
 
 let timers = [];
-const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; if (window._raf) cancelAnimationFrame(window._raf); };
+const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; if (window._raf) cancelAnimationFrame(window._raf); window.ondevicemotion = null; };
 
 let current = null; // aktuelles Spiel (für Farbe und Kopfzeile)
 function render(html, opts = {}) {
@@ -275,7 +366,9 @@ function render(html, opts = {}) {
   const top = opts.top === false || !g ? '' :
     `<div class="top"><button class="back" onclick="${opts.backTo || 'home()'}" aria-label="Zurück">‹</button><span class="pill">${g.e} ${g.name}</span></div>`;
   $('#app').innerHTML = `<div class="screen" style="${style}">${top}${html}</div>`;
+  $('#bar').innerHTML = opts.bar ? `<div class="bar" style="${style}">${opts.bar}</div>` : '';
   window.scrollTo(0, 0);
+  if (html.includes('card flip')) sfx('flip');
 }
 function needPlayers(min, fn) {
   if (players.length < min) { screenPlayers(fn, `Für dieses Spiel braucht ihr mindestens ${min} Spieler.`); return false; }
@@ -318,6 +411,7 @@ const GAMES = [
   { id: 'bombe', grp: 'tempo', e: '💣', name: 'Die Bombe', desc: 'Weitergeben, bevor es knallt', min: 2, fn: () => bombeStart() },
   { id: 'tabu', grp: 'tempo', e: '🤐', name: 'Verbotene Wörter', desc: 'Erklären ohne Tabuwörter', min: 4, fn: () => teamSetup('tabu') },
   { id: 'pantomime', grp: 'tempo', e: '🎭', name: 'Pantomime', desc: 'Ohne Worte vorspielen', min: 4, fn: () => teamSetup('pantomime'), isNew: 1 },
+  { id: 'stirn', grp: 'tempo', e: '🤳', name: 'Stirnraten', desc: 'Handy an die Stirn & raten', min: 2, fn: () => stirnSetup(), isNew: 1 },
   { id: 'kette', grp: 'tempo', e: '🔗', name: 'Kettenreaktion', desc: 'Wortkette unter Zeitdruck', min: 2, fn: () => ketteSetup(), isNew: 1 },
   { id: 'emoji', grp: 'tempo', e: '🎬', name: 'Emoji-Rätsel', desc: 'Welcher Film ist das?', min: 2, fn: () => emoji(), isNew: 1 },
   { id: 'schaetzen', grp: 'tempo', e: '📏', name: 'Schätzen', desc: 'Wer liegt am nächsten?', min: 2, fn: () => schaetzen(), isNew: 1 },
@@ -335,11 +429,13 @@ function home() {
   clearTimers(); current = null;
   const groups = Object.keys(GROUPS).filter(k => filter === 'alle' || filter === k);
   render(`<div class="hero"><canvas id="confetti"></canvas>
+      <div class="hero-actions"><button class="icon-btn" onclick="screenSettings()" aria-label="Einstellungen">⚙️</button></div>
       <h1>Konfetti</h1><p>${GAMES.length} Partyspiele · ein Handy · null Langeweile</p>
       <button class="who" onclick="screenPlayers()">
         ${players.length ? `<span class="avatars">${avatars()}</span>` : '<span class="av" style="background:var(--gold)">+</span>'}
         <span>${players.length ? players.map(esc).join(', ') : 'Spieler hinzufügen'}</span><em>${players.length ? players.length + ' ✎' : '›'}</em>
-      </button></div>
+      </button>
+      <button class="surprise" onclick="surprise()"><span class="e">🎁</span><span><b>Überrasch mich!</b><small>Die App wählt ein passendes Spiel für ${players.length || 'eure'} ${players.length === 1 ? 'Person' : 'Spieler'}</small></span></button></div>
     <div class="filters">${[['alle','Alle'], ...Object.entries(GROUPS).map(([k, v]) => [k, v.split(' ')[0]])]
       .map(([k, v]) => `<button class="fchip ${filter === k ? 'on' : ''}" onclick="setFilter('${k}')">${v}</button>`).join('')}</div>
     ${groups.map(k => {
@@ -350,6 +446,21 @@ function home() {
         <span class="e">${g.e}</span><span><b>${g.name}</b><small>${g.desc}</small></span></button>`).join('')}</div>`;
     }).join('')}`, { top: false });
   confettiBurst();
+}
+function surprise() {
+  const ok = GAMES.filter(g => g.grp !== 'tool' && players.length >= g.min);
+  start(pick(ok.length ? ok : GAMES.filter(g => g.grp !== 'tool')).id);
+}
+function screenSettings() {
+  current = null;
+  const row = (key, title, sub) => `<div class="setting"><span><b>${title}</b><small>${sub}</small></span>
+    <button class="switch" role="switch" aria-checked="${settings[key]}" aria-label="${title}" onclick="settings.${key}=!settings.${key};saveSettings();screenSettings();${key === 'sound' ? "sfx('ok')" : 'vibrate(60)'}"></button></div>`;
+  render(`<div class="top"><button class="back" onclick="home()" aria-label="Zurück">‹</button><span class="pill" style="--c1:var(--tool);--c2:var(--tool2)">⚙️ Einstellungen</span></div>
+    ${row('sound', 'Soundeffekte', 'Ticken, Explosion, Jubel')}
+    ${row('vibe', 'Vibration', 'Haptisches Feedback beim Spielen')}
+    <div class="setting"><span><b>Spieler</b><small>${players.length} eingetragen</small></span><button class="chip" onclick="screenPlayers()">Bearbeiten</button></div>
+    <div class="setting"><span><b>Spielstapel mischen</b><small>Alle Fragen sind wieder neu</small></span><button class="chip" onclick="for (const k in decks) delete decks[k]; this.textContent='Gemischt ✓'">Mischen</button></div>
+    <p class="muted help">Konfetti 3.0 · ${GAMES.length} Spiele · ein Schulprojekt</p>`, { top: false });
 }
 function setFilter(k) { filter = k; try { sessionStorage.setItem('konfetti-filter', k); } catch (e) {} home(); }
 
@@ -382,7 +493,7 @@ function screenPlayers(after, hint) {
     <button class="btn sec" id="addb">＋ Hinzufügen</button>
     <div class="chips">${players.map((p, i) => `<button class="chip" onclick="removePlayer(${i})"><span class="av" style="margin:0;width:24px;height:24px;background:${AV_COLORS[i % AV_COLORS.length]}">${esc(p[0].toUpperCase())}</span>${esc(p)} <span class="x">✕</span></button>`).join('')}</div>
     <p class="muted">${players.length ? players.length + ' Spieler · Tippen zum Entfernen' : 'Noch niemand dabei. Tragt eure Namen ein!'}</p>
-    <div class="bar"><button class="btn" style="--c1:var(--tool);--c2:var(--tool2)" id="done">Fertig</button></div>`, { top: false });
+`, { top: false, bar: `<button class="btn" style="--c1:var(--tool);--c2:var(--tool2)" id="done">Fertig</button>` });
   const add = e => { e && e.preventDefault(); const n = $('#pname').value.trim();
     if (n && !players.includes(n)) { players.push(n); savePlayers(); } screenPlayers(window._after); setTimeout(() => $('#pname').focus(), 30); };
   $('#pf').onsubmit = add; $('#addb').onclick = add;
@@ -413,7 +524,7 @@ function impostorStart(cat) {
     });
 }
 function impostorReveal() {
-  vibrate(80);
+  vibrate(80); celebrate();
   render(`<div class="card flip color"><p class="label muted">${imp.impostors.length > 1 ? 'Die Impostor waren' : 'Der Impostor war'}</p>
     <div class="big">${imp.impostors.map(esc).join(' & ')}</div><p class="label muted">Das Wort war</p><div class="big">${imp.word}</div></div>
     <div class="row"><button class="btn" onclick="impostorStart(imp.cat)">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
@@ -443,11 +554,11 @@ function spionTimer() {
     const s = Math.max(0, Math.ceil((end - Date.now()) / 1000));
     if (!$('#t')) return clearTimers();
     $('#t').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; $('#pb').style.width = (s / total * 100) + '%';
-    if (s === 0) { clearTimers(); vibrate([300, 100, 300]); $('#t').textContent = 'Zeit!'; }
+    if (s === 0) { clearTimers(); vibrate([300, 100, 300]); sfx('alarm'); $('#t').textContent = 'Zeit!'; }
   }, 500));
 }
 function spionReveal() {
-  clearTimers(); vibrate(80);
+  clearTimers(); vibrate(80); celebrate();
   render(`<div class="card flip color"><p class="label muted">Der Spion war</p><div class="big">${esc(spy.spion)}</div><p class="label muted">Der Ort war</p><div class="big">${spy.ort}</div></div>
     <div class="row"><button class="btn" onclick="spionStart()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
@@ -568,6 +679,7 @@ function emoji() {
   render(`<div class="card flip"><p class="label muted">Welcher Film ist das?</p><div style="font-size:4rem;line-height:1.2">${e}</div><p class="muted">Wer es zuerst ruft, bekommt den Punkt.</p></div>
     <button class="btn" id="sol">Lösung zeigen</button>`);
   $('#sol').onclick = () => {
+    sfx('ok');
     render(`<div class="card flip color"><div style="font-size:3rem">${e}</div><div class="big">${sol}</div></div><button class="btn" onclick="emoji()">Nächstes Rätsel</button>`);
   };
 }
@@ -594,13 +706,13 @@ function bombeRun() {
     const rest = total - (Date.now() - t0);
     if (rest <= 0) return bombeBoom();
     const el = $('#bomb'); if (!el) return;
-    el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); vibrate(20);
+    el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); vibrate(20); sfx('tick');
     timers.push(setTimeout(tick, Math.max(140, 1000 * rest / total)));
   };
   tick();
 }
 function bombeBoom() {
-  clearTimers(); vibrate([400, 100, 400]);
+  clearTimers(); vibrate([400, 100, 400]); sfx('boom');
   render(`<div class="card boom"><div class="huge" style="font-size:6rem">💥</div><div class="big">BUMM!</div><p>Wer das Handy hält, hat verloren!</p></div>
     <div class="row"><button class="btn" onclick="bombeRun()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
@@ -630,7 +742,7 @@ function teamRun() {
   timers.push(setInterval(() => {
     const s = Math.max(0, Math.ceil((team.end - Date.now()) / 1000));
     if ($('#time')) { $('#time').textContent = s + ' s'; $('#pb').style.width = (s / 60 * 100) + '%'; }
-    if (s <= 10 && s > 0) vibrate(15);
+    if (s <= 10 && s > 0) { vibrate(15); sfx('tick'); }
     if (s <= 0) teamEnd();
   }, 1000));
 }
@@ -644,9 +756,9 @@ function teamCard() {
     <div class="card flip">${inner}</div>
     <div class="row">${team.mode === 'tabu' ? `<button class="btn bad" onclick="teamPoint(-1)">❌</button>` : ''}<button class="btn sec" onclick="teamPoint(0)">⏭️</button><button class="btn ok" onclick="teamPoint(1)">✅</button></div>`, { top: false });
 }
-function teamPoint(n) { team.points += n; vibrate(30); teamCard(); }
+function teamPoint(n) { team.points += n; vibrate(30); sfx(n > 0 ? 'ok' : n < 0 ? 'bad' : 'skip'); teamCard(); $('.card').classList.add(n > 0 ? 'flash-ok' : n < 0 ? 'flash-bad' : 'x'); }
 function teamEnd() {
-  clearTimers(); vibrate([200, 100, 200]);
+  clearTimers(); vibrate([200, 100, 200]); sfx('alarm');
   team.scores[team.team] += team.points;
   const pts = team.points;
   if (team.team === 1) team.round++;
@@ -655,9 +767,66 @@ function teamEnd() {
     <button class="btn" onclick="teamReady()">${team.round > team.rounds ? 'Ergebnis zeigen' : 'Nächstes Team'}</button>`, { top: false });
 }
 function teamFinal() {
+  celebrate();
   const [a, b] = team.scores, txt = a === b ? 'Unentschieden!' : `Team ${a > b ? 'A 🟣' : 'B 🟠'} gewinnt!`;
   render(`<div class="card flip color"><span class="huge">🏆</span><div class="big">${txt}</div><p>Team A: ${a} · Team B: ${b}</p></div>
     <div class="row"><button class="btn" onclick="teamSetup(team.mode)">Neues Spiel</button><button class="btn sec" onclick="home()">Menü</button></div>`);
+}
+
+// ================= Stirnraten =================
+let stirn = {};
+function stirnSetup() {
+  const cats = Object.keys(DATA.stirn);
+  render(`<h2>Wer oder was bin ich?</h2>${rules(['Halte das Handy quer an deine Stirn – der Bildschirm zeigt zu den anderen.','Die anderen erklären den Begriff, ohne ihn zu sagen.','<b>Nach unten kippen</b> = richtig, <b>nach oben kippen</b> = überspringen. Oder einfach die Knöpfe benutzen.','Du hast 60 Sekunden!'])}
+    <p class="label muted">Kategorie wählen</p>
+    <div class="chips">${cats.map(c => `<button class="chip" onclick="stirnStart('${c}')">${c}</button>`).join('')}</div>`);
+}
+function stirnStart(cat) {
+  clearTimers(); stirn = { cat, ok: [], skip: [], end: Date.now() + 60000, lock: false, armed: false };
+  let n = 3;
+  const count = () => {
+    if (n === 0) return stirnCard();
+    render(`<div class="card color"><p class="muted">Handy an die Stirn!</p><div class="huge" style="font-family:var(--display);font-size:6rem">${n}</div></div>`, { top: false });
+    sfx('tick'); vibrate(30); n--; timers.push(setTimeout(count, 900));
+  };
+  count();
+  // Bewegungssensor: Schwerkraft entlang der Bildschirm-Achse (z)
+  // Handy an der Stirn: z ≈ 0. Bildschirm zeigt nach unten → z stark negativ (richtig), nach oben → stark positiv (weiter).
+  window.ondevicemotion = e => {
+    const g = e.accelerationIncludingGravity; if (!g || g.z == null) return;
+    if (Math.abs(g.z) < 4) { stirn.armed = true; return; }
+    if (!stirn.word || stirn.lock || !stirn.armed) return;
+    if (g.z < -7) { stirn.armed = false; stirnAnswer('ok'); }
+    else if (g.z > 7) { stirn.armed = false; stirnAnswer('skip'); }
+  };
+  timers.push(setInterval(() => {
+    const s = Math.max(0, Math.ceil((stirn.end - Date.now()) / 1000));
+    if ($('#time')) { $('#time').textContent = s + ' s'; $('#pb').style.width = (s / 60 * 100) + '%'; }
+    if (s <= 5 && s > 0) sfx('tick');
+    if (s <= 0) stirnEnd();
+  }, 1000));
+}
+function stirnCard() {
+  stirn.word = draw('stirn-' + stirn.cat, DATA.stirn[stirn.cat]);
+  const s = Math.max(0, Math.ceil((stirn.end - Date.now()) / 1000));
+  render(`<div class="score"><span>✅ ${stirn.ok.length}</span><span class="timer" id="time">${s} s</span></div>
+    <div class="progress"><i id="pb" style="width:${s / 60 * 100}%"></i></div>
+    <div class="card flip color" style="min-height:300px"><div class="big" style="font-size:2.6rem">${stirn.word}</div><p class="tilt">⬇️ richtig · ⬆️ weiter</p></div>
+    <div class="row"><button class="btn sec" data-quiet="1" onclick="stirnAnswer('skip')">⏭️ Weiter</button><button class="btn ok" data-quiet="1" onclick="stirnAnswer('ok')">✅ Richtig</button></div>`, { top: false });
+}
+function stirnAnswer(kind) {
+  if (stirn.lock || !stirn.word) return;
+  stirn[kind].push(stirn.word); stirn.lock = true; stirn.word = null;
+  sfx(kind === 'ok' ? 'ok' : 'skip'); vibrate(kind === 'ok' ? 60 : 25);
+  const c = $('.card'); if (c) { c.classList.add(kind === 'ok' ? 'flash-ok' : 'flash-bad'); c.querySelector('.big').textContent = kind === 'ok' ? 'Richtig! 🎉' : 'Weiter ⏭️'; }
+  timers.push(setTimeout(() => { stirn.lock = false; if (Date.now() < stirn.end) stirnCard(); }, 700));
+}
+function stirnEnd() {
+  clearTimers(); window.ondevicemotion = null; stirn.word = null; sfx('alarm'); vibrate([200, 100, 200]);
+  if (stirn.ok.length) celebrate();
+  render(`<div class="card flip color"><span class="huge">🏁</span><div class="big">${stirn.ok.length} richtig!</div>
+    <div class="list">${stirn.ok.map(w => `<div>✅ ${w}</div>`).join('')}${stirn.skip.map(w => `<div style="opacity:.6">⏭️ ${w}</div>`).join('')}</div></div>
+    <div class="row"><button class="btn" onclick="stirnStart(stirn.cat)">Nächste Person</button><button class="btn sec" onclick="home()">Menü</button></div>`);
 }
 
 // ================= Kettenreaktion =================
@@ -674,7 +843,7 @@ function ketteStart() {
 function ketteTurn() {
   clearTimers();
   if (kette.alive.length === 1) {
-    vibrate([100, 50, 100]);
+    vibrate([100, 50, 100]); celebrate();
     return render(`<div class="card flip color"><span class="huge">🏆</span><div class="big">${esc(kette.alive[0])} gewinnt!</div></div>
       <div class="row"><button class="btn" onclick="ketteStart()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
   }
@@ -684,7 +853,8 @@ function ketteTurn() {
     <div class="card color"><p class="label muted">Dran ist</p><div class="big">${esc(p)}</div>
     ${kette.letter ? `<p class="muted">Erstes Wort mit</p><div class="huge" style="font-family:var(--display)">${kette.letter}</div>` : '<p class="muted">Letzter Buchstabe des vorherigen Worts!</p>'}</div>
     <button class="btn ok" id="w">✅ Weiter</button>`);
-  $('#w').onclick = () => { vibrate(25); kette.letter = null; kette.idx++; kette.limit = Math.max(3, kette.limit - 0.5); ketteTurn(); };
+  $('#w').dataset.quiet = 1;
+  $('#w').onclick = () => { vibrate(25); sfx('ok'); kette.letter = null; kette.idx++; kette.limit = Math.max(3, kette.limit - 0.5); ketteTurn(); };
   const loop = () => {
     const rest = (end - Date.now()) / 1000;
     if (!$('#t')) return;
@@ -695,7 +865,7 @@ function ketteTurn() {
   loop();
 }
 function ketteOut(p) {
-  vibrate([300, 80, 300]);
+  vibrate([300, 80, 300]); sfx('boom');
   kette.alive = kette.alive.filter(x => x !== p); kette.idx = kette.idx % Math.max(1, kette.alive.length); kette.limit = 10; kette.letter = pick('ABDEFGHKLMNPRSTW'.split(''));
   render(`<div class="card boom"><span class="huge">⌛</span><div class="big">${esc(p)} ist raus!</div><p>Neue Kette, neuer Buchstabe.</p></div>
     <button class="btn" onclick="ketteTurn()">Weiter</button>`);
@@ -719,10 +889,11 @@ function spin() {
   wheelRot += 5 * 360 + Math.random() * 360;
   $('#wheel').style.transform = `rotate(${wheelRot}deg)`;
   $('#spin').disabled = true; $('#result').textContent = '…';
+  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22].forEach(i => timers.push(setTimeout(() => sfx('spin'), 3900 * Math.pow(i / 22, 2.2))));
   timers.push(setTimeout(() => {
     const angle = (360 - (wheelRot % 360)) % 360;   // Zeiger oben = 0°
     $('#result').textContent = '🎉 ' + players[Math.floor(angle / seg)];
-    $('#spin').disabled = false; vibrate(120);
+    $('#spin').disabled = false; vibrate(120); celebrate();
   }, 4300));
 }
 
@@ -738,12 +909,12 @@ function wuerfel() {
 function roll() {
   const v = Array.from({ length: diceCount }, () => 1 + Math.floor(Math.random() * 6));
   $('#dice').innerHTML = v.map(x => `<div class="die roll">${x}</div>`).join('');
-  $('#sum').textContent = diceCount > 1 ? 'Summe: ' + v.reduce((a, b) => a + b) : ' '; vibrate(40);
+  $('#sum').textContent = diceCount > 1 ? 'Summe: ' + v.reduce((a, b) => a + b) : ' '; vibrate(40); sfx('flip');
 }
 function flip() {
   const c = $('#coin'); c.classList.remove('coinflip'); void c.offsetWidth; c.textContent = '';
   c.classList.add('coinflip'); vibrate(30);
-  timers.push(setTimeout(() => { c.textContent = Math.random() < .5 ? 'KOPF' : 'ZAHL'; vibrate(60); }, 900));
+  timers.push(setTimeout(() => { c.textContent = Math.random() < .5 ? 'KOPF' : 'ZAHL'; vibrate(60); sfx('coin'); }, 900));
 }
 
 home();

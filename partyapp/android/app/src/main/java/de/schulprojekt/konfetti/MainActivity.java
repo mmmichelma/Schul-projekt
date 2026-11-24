@@ -20,6 +20,7 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);   // damit die Spielernamen gespeichert bleiben
+        s.setMediaPlaybackRequiresUserGesture(false); // Soundeffekte
         web.setWebChromeClient(new WebChromeClient()); // für alert()-Hinweise
         setContentView(web);
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
