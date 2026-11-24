@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Konfetti – Partyspiele</title>
+<style>
+  :root {
+    --bg: #14111f; --card: #221d33; --card2: #2d2642; --text: #f5f2ff; --muted: #a59fc0;
+    --bluff: #8b5cf6; --fragen: #ec4899; --tempo: #f97316; --tool: #14b8a6; --danger: #ef4444; --ok: #22c55e;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; }
+  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 120px; }
+  h1 { font-size: 2.2rem; margin: 8px 0 4px; letter-spacing: -0.02em; }
+  h2 { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tile { border: 0; border-radius: 18px; padding: 18px 14px; color: #fff; text-align: left; cursor: pointer; font: inherit; min-height: 110px; display: flex; flex-direction: column; justify-content: space-between; }
+  .tile .e { font-size: 2rem; }
+  .tile b { font-size: 1.05rem; }
+  .tile small { opacity: .85; font-size: .8rem; }
+  .section-title { margin: 24px 0 10px; color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 16px; font: inherit; font-weight: 700; font-size: 1.05rem; cursor: pointer; background: var(--bluff); color: #fff; margin-top: 10px; }
+  .btn.sec { background: var(--card2); }
+  .btn.ok { background: var(--ok); } .btn.bad { background: var(--danger); }
+  .row { display: flex; gap: 10px; } .row .btn { flex: 1; }
+  .card { background: var(--card); border-radius: 22px; padding: 28px 22px; text-align: center; min-height: 240px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+  .big { font-size: 1.9rem; font-weight: 800; line-height: 1.25; }
+  .huge { font-size: 4rem; font-weight: 900; }
+  .muted { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .chip { background: var(--card2); border-radius: 999px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 8px; }
+  .chip button { background: none; border: 0; color: var(--muted); font-size: 1rem; cursor: pointer; padding: 0; }
+  .chip.sel { background: var(--bluff); }
+  input { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid var(--card2); background: var(--card); color: var(--text); font: inherit; }
+  .back { background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; padding: 0 0 12px; }
+  .players-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: space-between; align-items: center; }
+  .players-bar span { color: var(--muted); font-size: .9rem; }
+  .players-bar button { background: var(--card2); color: var(--text); border: 0; border-radius: 10px; padding: 10px 14px; font: inherit; cursor: pointer; }
+  .forbidden { list-style: none; padding: 0; margin: 8px 0 0; color: #fca5a5; font-weight: 700; }
+  .forbidden li { padding: 4px 0; text-decoration: line-through; }
+  .score { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 12px; }
+  .boom { animation: shake .4s infinite; background: var(--danger) !important; }
+  @keyframes shake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-8px) } 75% { transform: translateX(8px) } }
+  .pulse { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.08) } }
+  .wheel-wrap { position: relative; width: 280px; height: 280px; margin: 10px auto; }
+  .wheel { width: 100%; height: 100%; border-radius: 50%; transition: transform 4s cubic-bezier(.17,.67,.2,1); }
+  .pointer { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); font-size: 2rem; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div class="players-bar" id="bar"></div>
+
+<script>
+// ---------- Inhalte (eigene Beispieldaten) ----------
+const DATA = {
+  impostor: {
+    'Essen': ['Pizza','Sushi','Pommes','Lasagne','Döner','Pfannkuchen','Spaghetti','Brezel','Erdbeere','Popcorn'],
+    'Orte': ['Schwimmbad','Flughafen','Bibliothek','Zahnarzt','Kino','Zeltlager','Bäckerei','Turnhalle','Strand','Museum'],
+    'Tiere': ['Pinguin','Giraffe','Hamster','Krokodil','Eule','Delfin','Faultier','Kuh','Biene','Oktopus'],
+    'Schule': ['Pausenhof','Mathearbeit','Klassenfahrt','Hausmeister','Tafel','Zeugnis','Mensa','Wandertag','Referat','Sportunterricht']
+  },
+  eher: [
+    'Wer würde eher im Urlaub den Reisepass vergessen?','Wer würde eher bei einer Quizshow gewinnen?',
+    'Wer würde eher eine Woche ohne Handy überleben?','Wer würde eher aus Versehen berühmt werden?',
+    'Wer würde eher beim Wandertag verloren gehen?','Wer würde eher einen Tanzwettbewerb gewinnen?',
+    'Wer würde eher heimlich die letzte Pizza essen?','Wer würde eher in einer Zombie-Apokalypse überleben?',
+    'Wer würde eher den Wecker zehnmal snoozen?','Wer würde eher ein eigenes Unternehmen gründen?',
+    'Wer würde eher bei einem Horrorfilm schreien?','Wer würde eher mit Tieren sprechen, als wären es Menschen?'
+  ],
+  wahrheit: [
+    'Was war dein peinlichster Moment in der Schule?','Wen hier würdest du auf eine einsame Insel mitnehmen?',
+    'Was ist das Seltsamste, das du je gegessen hast?','Welche App nutzt du heimlich am meisten?',
+    'Was war die beste Ausrede, die du je benutzt hast?','Welches Lied hörst du heimlich, obwohl es peinlich ist?',
+    'Was würdest du mit 1 Million Euro als Erstes machen?','Was ist deine merkwürdigste Angewohnheit?'
+  ],
+  pflicht: [
+    'Sprich bis zu deiner nächsten Runde nur noch in Reimen.','Mach 10 Kniebeugen und zähle laut auf Englisch.',
+    'Imitiere eine Lehrkraft deiner Wahl – die anderen raten.','Sing den Refrain deines Lieblingslieds.',
+    'Erzähle einen Witz. Wenn keiner lacht: noch einen.','Lass die Gruppe dein Hintergrundbild für 1 Minute aussuchen.',
+    'Sprich 1 Minute wie ein Nachrichtensprecher über dein Frühstück.','Mach deinen besten Roboter-Tanz für 15 Sekunden.'
+  ],
+  skala: [
+    'Wie chaotisch ist {name}?','Wie gut kann {name} kochen?','Wie wahrscheinlich ist es, dass {name} zu spät kommt?',
+    'Wie sportlich ist {name}?','Wie gut kann {name} ein Geheimnis bewahren?','Wie abenteuerlustig ist {name}?',
+    'Wie gut ist {name} im Lügen?','Wie viel Drama verträgt {name}?'
+  ],
+  bombe: ['Obstsorten','Automarken','Länder in Europa','Dinge im Badezimmer','Sportarten','Berufe','Tiere mit vier Beinen',
+          'Schulfächer','Social-Media-Apps','Dinge, die man im Kühlschrank findet','Musikinstrumente','Farben','Hauptstädte','Gemüse'],
+  tabu: [
+    ['Schule',['Lehrer','Unterricht','Klasse','lernen']], ['Fahrrad',['Rad','treten','Lenker','fahren']],
+    ['Pizza',['Italien','Käse','Teig','Ofen']], ['Handy',['Telefon','Smartphone','anrufen','App']],
+    ['Sommer',['Sonne','warm','Ferien','Jahreszeit']], ['Fußball',['Tor','Ball','Spiel','Mannschaft']],
+    ['Geburtstag',['Kuchen','Feier','Geschenk','Jahr']], ['Zahnbürste',['Zähne','putzen','Zahnpasta','Bad']],
+    ['Kino',['Film','Popcorn','Leinwand','Ticket']], ['Schnee',['weiß','Winter','kalt','Flocke']],
+    ['Hausaufgaben',['Schule','Lehrer','erledigen','Heft']], ['Weihnachten',['Baum','Geschenke','Dezember','Fest']],
+    ['Polizei',['Verbrecher','Blaulicht','Auto','Gesetz']], ['Gitarre',['Saiten','Instrument','spielen','Musik']]
+  ]
+};
+
+// ---------- Hilfsfunktionen ----------
+const $ = s => document.querySelector(s);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+// Karten ohne Wiederholung ziehen, bis der Stapel leer ist
+const decks = {};
+const draw = (key, arr) => { if (!decks[key] || !decks[key].length) decks[key] = shuffle(arr); return decks[key].pop(); };
+
+let players = [];
+try { players = JSON.parse(localStorage.getItem('konfetti-players')) || []; } catch (e) {}
+const savePlayers = () => { try { localStorage.setItem('konfetti-players', JSON.stringify(players)); } catch (e) {} };
+
+let timers = [];
+const clearTimers = () => { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; };
+
+function render(html, showBar = true) {
+  $('#app').innerHTML = html;
+  $('#bar').style.display = showBar ? 'flex' : 'none';
+  $('#bar').innerHTML = `<span>👥 ${players.length ? players.map(esc).join(', ') : 'Noch keine Spieler'}</span><button onclick="screenPlayers()">Spieler</button>`;
+  window.scrollTo(0, 0);
+}
+const backBtn = `<button class="back" onclick="home()">← Zurück</button>`;
+function needPlayers(min, fn) {
+  if (players.length < min) { alert(`Für dieses Spiel braucht ihr mindestens ${min} Spieler.`); screenPlayers(fn); return false; }
+  return true;
+}
+
+// ---------- Startseite ----------
+const GAMES = [
+  { group: 'Bluffen & Täuschen', items: [
+    { id: 'impostor', e: '🕵️', name: 'Impostor', desc: 'Wer kennt das Wort nicht?', c: 'var(--bluff)', fn: () => impostorSetup() } ] },
+  { group: 'Fragen & Diskussion', items: [
+    { id: 'eher', e: '👉', name: 'Wer würde eher?', desc: 'Alle zeigen auf jemanden', c: 'var(--fragen)', fn: () => eher() },
+    { id: 'wop', e: '🎲', name: 'Wahrheit oder Pflicht', desc: 'Der Klassiker', c: 'var(--fragen)', fn: () => wop() },
+    { id: 'skala', e: '💯', name: 'Skala 1–10', desc: 'Wie gut kennt ihr euch?', c: 'var(--fragen)', fn: () => skala() } ] },
+  { group: 'Tempo & Kreativität', items: [
+    { id: 'bombe', e: '💣', name: 'Die Bombe', desc: 'Weitergeben, bevor es knallt', c: 'var(--tempo)', fn: () => bombeStart() },
+    { id: 'tabu', e: '🤐', name: 'Verbotene Wörter', desc: 'Erklären ohne Tabuwörter', c: 'var(--tempo)', fn: () => tabuSetup() } ] },
+  { group: 'Werkzeuge', items: [
+    { id: 'rad', e: '🎡', name: 'Glücksrad', desc: 'Zufällig jemanden wählen', c: 'var(--tool)', fn: () => wheel() } ] }
+];
+
+function home() {
+  clearTimers();
+  render(`<h1>🎉 Konfetti</h1><p class="sub">Partyspiele für eure Gruppe – ein Handy, viel Spaß.</p>
+    ${GAMES.map((g, gi) => `<div class="section-title">${g.group}</div><div class="grid">
+      ${g.items.map((it, ii) => `<button class="tile" style="background:${it.c}" onclick="GAMES[${gi}].items[${ii}].fn()">
+        <span class="e">${it.e}</span><span><b>${it.name}</b><br><small>${it.desc}</small></span></button>`).join('')}
+    </div>`).join('')}`);
+}
+
+// ---------- Spieler verwalten ----------
+function screenPlayers(after) {
+  window._after = after || null;
+  render(`${backBtn}<h2>Spieler</h2>
+    <form onsubmit="addPlayer(event)"><input id="pname" placeholder="Name eingeben und Enter" maxlength="20" autocomplete="off"></form>
+    <div class="chips">${players.map((p, i) => `<span class="chip">${esc(p)} <button onclick="removePlayer(${i})" aria-label="entfernen">✕</button></span>`).join('')}</div>
+    <p class="muted">${players.length} Spieler</p>
+    <button class="btn" onclick="(window._after || home)()">Fertig</button>`, false);
+  $('#pname').focus();
+}
+function addPlayer(e) {
+  e.preventDefault();
+  const n = $('#pname').value.trim();
+  if (n && !players.includes(n)) { players.push(n); savePlayers(); }
+  screenPlayers(window._after);
+}
+function removePlayer(i) { players.splice(i, 1); savePlayers(); screenPlayers(window._after); }
+
+// ---------- Impostor ----------
+let imp = {};
+function impostorSetup() {
+  if (!needPlayers(3, impostorSetup)) return;
+  const cats = Object.keys(DATA.impostor);
+  render(`${backBtn}<h2>🕵️ Impostor</h2>
+    <p class="muted">Alle sehen ein geheimes Wort – nur der Impostor nicht. Reihum nennt jeder einen Hinweis. Dann stimmt ihr ab, wer geblufft hat.</p>
+    <div class="section-title">Kategorie</div>
+    <div class="chips">${cats.map(c => `<button class="chip" style="border:0;color:inherit;font:inherit;cursor:pointer" onclick="impostorStart('${c}')">${c}</button>`).join('')}</div>
+    <button class="btn" onclick="impostorStart('${pick(cats)}')">Zufällige Kategorie</button>`);
+}
+function impostorStart(cat) {
+  const count = players.length >= 8 ? 2 : 1;
+  imp = { cat, word: draw('imp-' + cat, DATA.impostor[cat]), impostors: shuffle(players).slice(0, count), idx: 0, shown: false };
+  impostorCard();
+}
+function impostorCard() {
+  const p = players[imp.idx];
+  if (!imp.shown) {
+    render(`<div class="card"><p class="muted">Gib das Handy an</p><div class="big">${esc(p)}</div><p class="muted">Spieler ${imp.idx + 1} von ${players.length}</p></div>
+      <button class="btn" onclick="imp.shown=true;vibrate(40);impostorCard()">Karte aufdecken</button>`, false);
+  } else {
+    const isImp = imp.impostors.includes(p);
+    render(`<div class="card" style="background:${isImp ? 'var(--danger)' : 'var(--card)'}">
+      ${isImp ? `<div class="huge">🕵️</div><div class="big">Du bist der Impostor!</div><p>Kategorie: ${imp.cat}. Bluffe dich durch!</p>`
+              : `<p class="muted">Das geheime Wort</p><div class="big">${imp.word}</div><p class="muted">Kategorie: ${imp.cat}</p>`}
+      </div><button class="btn sec" onclick="impostorNext()">Verdecken & weitergeben</button>`, false);
+  }
+}
+function impostorNext() {
+  imp.shown = false; imp.idx++;
+  if (imp.idx < players.length) return impostorCard();
+  render(`<div class="card"><div class="huge">🗣️</div><div class="big">${esc(pick(players))} beginnt!</div>
+    <p class="muted">Jeder nennt reihum ein Hinweiswort. Danach diskutiert ihr und zeigt auf 3-2-1 auf euren Verdacht.</p></div>
+    <button class="btn" onclick="impostorReveal()">Auflösung zeigen</button>`, false);
+}
+function impostorReveal() {
+  render(`<div class="card"><p class="muted">${imp.impostors.length > 1 ? 'Die Impostor waren' : 'Der Impostor war'}</p>
+    <div class="big">${imp.impostors.map(esc).join(' & ')}</div><p class="muted">Das Wort war</p><div class="big">${imp.word}</div>
+    <p class="muted">Wurde der Impostor erwischt? Er darf noch einmal das Wort raten!</p></div>
+    <div class="row"><button class="btn" onclick="impostorStart(imp.cat)">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
+}
+
+// ---------- Wer würde eher? ----------
+function eher() {
+  render(`${backBtn}<div class="card" style="background:var(--fragen)"><div class="big">${draw('eher', DATA.eher)}</div>
+    <p>Auf 3-2-1 zeigen alle gleichzeitig auf eine Person!</p></div>
+    <button class="btn sec" onclick="eher()">Nächste Frage</button>`);
+}
+
+// ---------- Wahrheit oder Pflicht ----------
+let wopState = { last: null, truths: {} };
+function wop() {
+  if (!needPlayers(2, wop)) return;
+  const options = players.length > 1 ? players.filter(p => p !== wopState.last) : players;
+  const p = pick(options); wopState.last = p;
+  const forced = (wopState.truths[p] || 0) >= 3;
+  render(`${backBtn}<div class="card"><p class="muted">Du bist dran</p><div class="big">${esc(p)}</div>
+    ${forced ? '<p>3× Wahrheit hintereinander – jetzt ist Pflicht angesagt! 😈</p>' : '<p class="muted">Wähle mutig …</p>'}</div>
+    <div class="row">${forced ? '' : `<button class="btn" style="background:var(--fragen)" onclick="wopShow(${players.indexOf(p)}, 'wahrheit')">Wahrheit</button>`}
+    <button class="btn" style="background:var(--tempo)" onclick="wopShow(${players.indexOf(p)}, 'pflicht')">Pflicht</button></div>`);
+}
+function wopShow(i, type) {
+  const p = players[i];
+  wopState.truths[p] = type === 'wahrheit' ? (wopState.truths[p] || 0) + 1 : 0;
+  render(`${backBtn}<div class="card" style="background:${type === 'wahrheit' ? 'var(--fragen)' : 'var(--tempo)'}">
+    <p>${type === 'wahrheit' ? 'Wahrheit' : 'Pflicht'} für ${esc(p)}</p><div class="big">${draw(type, DATA[type])}</div></div>
+    <button class="btn sec" onclick="wop()">Nächste Person</button>`);
+}
+
+// ---------- Skala 1–10 ----------
+function skala() {
+  if (!needPlayers(2, skala)) return;
+  const p = pick(players);
+  const q = draw('skala', DATA.skala).replace('{name}', esc(p));
+  render(`${backBtn}<div class="card" style="background:var(--fragen)"><div class="big">${q}</div>
+    <p>Alle zeigen gleichzeitig mit den Fingern eine Zahl von 1–10. Dann verrät ${esc(p)} die eigene Einschätzung – wer am nächsten dran ist, bekommt einen Punkt!</p></div>
+    <button class="btn sec" onclick="skala()">Nächste Frage</button>`);
+}
+
+// ---------- Die Bombe ----------
+function bombeStart() {
+  clearTimers();
+  render(`${backBtn}<h2>💣 Die Bombe</h2>
+    <p class="muted">Eine Kategorie erscheint. Nenne einen passenden Begriff und gib das Handy weiter. Niemand weiß, wann die Bombe explodiert …</p>
+    <button class="btn" style="background:var(--tempo)" onclick="bombeRun()">Bombe scharf machen</button>`);
+}
+function bombeRun() {
+  clearTimers();
+  const cat = draw('bombe', DATA.bombe);
+  const total = 15000 + Math.random() * 30000, start = Date.now();
+  render(`<div class="card" style="background:var(--tempo)"><p>Kategorie</p><div class="big">${cat}</div>
+    <div class="huge" id="bomb">💣</div><p>Begriff nennen & weitergeben!</p></div>`, false);
+  const tick = () => {
+    const rest = total - (Date.now() - start);
+    if (rest <= 0) return bombeBoom();
+    const el = $('#bomb'); if (el) { el.classList.toggle('pulse'); }
+    vibrate(20);
+    timers.push(setTimeout(tick, Math.max(150, 1000 * rest / total)));
+  };
+  tick();
+}
+function bombeBoom() {
+  clearTimers(); vibrate([300, 100, 300]);
+  render(`<div class="card boom"><div class="huge">💥</div><div class="big">BUMM!</div><p>Wer das Handy hält, hat verloren!</p></div>
+    <div class="row"><button class="btn" style="background:var(--tempo)" onclick="bombeRun()">Nochmal</button><button class="btn sec" onclick="home()">Menü</button></div>`);
+}
+
+// ---------- Verbotene Wörter ----------
+let tabu = {};
+function tabuSetup() {
+  clearTimers();
+  tabu = { scores: [0, 0], team: 0, round: 1 };
+  render(`${backBtn}<h2>🤐 Verbotene Wörter</h2>
+    <p class="muted">Bildet zwei Teams. Ein Spieler erklärt seinem Team so viele Begriffe wie möglich in 60 Sekunden – ohne die verbotenen Wörter.<br>
+    ✅ Richtig = +1 · ⏭️ Überspringen = 0 · ❌ Verbotenes Wort = −1</p>
+    <button class="btn" style="background:var(--tempo)" onclick="tabuReady()">Los geht's</button>`);
+}
+function tabuReady() {
+  clearTimers();
+  render(`<div class="score"><span>Team A: ${tabu.scores[0]}</span><span>Team B: ${tabu.scores[1]}</span></div>
+    <div class="card"><p class="muted">Runde ${tabu.round}</p><div class="big">Team ${'AB'[tabu.team]} ist dran</div><p class="muted">Erklärer nimmt das Handy.</p></div>
+    <button class="btn" style="background:var(--tempo)" onclick="tabuRun()">Start (60 s)</button>
+    <button class="btn sec" onclick="home()">Spiel beenden</button>`, false);
+}
+function tabuRun() {
+  tabu.end = Date.now() + 60000; tabu.points = 0;
+  tabuCard();
+  timers.push(setInterval(() => {
+    const s = Math.ceil((tabu.end - Date.now()) / 1000);
+    const el = $('#time'); if (el) el.textContent = Math.max(0, s) + ' s';
+    if (s <= 0) tabuEnd();
+  }, 250));
+}
+function tabuCard() {
+  const [word, forbidden] = draw('tabu', DATA.tabu);
+  const s = Math.max(0, Math.ceil((tabu.end - Date.now()) / 1000));
+  render(`<div class="score"><span>Team ${'AB'[tabu.team]}: ${tabu.points >= 0 ? '+' : ''}${tabu.points}</span><span id="time">${s} s</span></div>
+    <div class="card"><div class="big">${word}</div><ul class="forbidden">${forbidden.map(f => `<li>${f}</li>`).join('')}</ul></div>
+    <div class="row"><button class="btn bad" onclick="tabuPoint(-1)">❌</button><button class="btn sec" onclick="tabuPoint(0)">⏭️</button><button class="btn ok" onclick="tabuPoint(1)">✅</button></div>`, false);
+}
+function tabuPoint(n) { tabu.points += n; vibrate(30); tabuCard(); }
+function tabuEnd() {
+  clearTimers(); vibrate([200, 100, 200]);
+  tabu.scores[tabu.team] += tabu.points;
+  const pts = tabu.points;
+  if (tabu.team === 1) tabu.round++;
+  tabu.team = 1 - tabu.team;
+  render(`<div class="card"><div class="huge">⏰</div><div class="big">Zeit ist um!</div><p>${pts} Punkte in dieser Runde</p>
+    <p class="muted">Team A: ${tabu.scores[0]} · Team B: ${tabu.scores[1]}</p></div>
+    <button class="btn" style="background:var(--tempo)" onclick="tabuReady()">Nächstes Team</button>`, false);
+}
+
+// ---------- Glücksrad ----------
+let wheelRot = 0;
+function wheel() {
+  if (!needPlayers(2, wheel)) return;
+  const colors = ['#8b5cf6','#ec4899','#f97316','#14b8a6','#3b82f6','#eab308','#22c55e','#ef4444'];
+  const n = players.length, seg = 360 / n;
+  const grad = players.map((_, i) => `${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
+  const labels = players.map((p, i) => {
+    const a = (i + 0.5) * seg;
+    return `<span style="position:absolute;left:50%;top:50%;transform:rotate(${a}deg) translateY(-105px) rotate(-${a}deg) translate(-50%,-50%);font-weight:700;font-size:.85rem;text-shadow:0 1px 3px #000">${esc(p)}</span>`;
+  }).join('');
+  render(`${backBtn}<h2>🎡 Glücksrad</h2>
+    <div class="wheel-wrap"><div class="pointer">🔻</div><div class="wheel" id="wheel" style="background:conic-gradient(${grad});transform:rotate(${wheelRot}deg)"><div style="position:relative;width:100%;height:100%">${labels}</div></div></div>
+    <div class="card" style="min-height:auto;padding:16px"><div class="big" id="result">Dreh das Rad!</div></div>
+    <button class="btn" style="background:var(--tool)" id="spin" onclick="spin()">Drehen</button>`);
+}
+function spin() {
+  const n = players.length, seg = 360 / n;
+  wheelRot += 5 * 360 + Math.random() * 360;
+  $('#wheel').style.transform = `rotate(${wheelRot}deg)`;
+  $('#spin').disabled = true; $('#result').textContent = '…';
+  timers.push(setTimeout(() => {
+    // Zeiger steht oben (0°). Welches Segment liegt nach der Drehung dort?
+    const angle = (360 - (wheelRot % 360)) % 360;
+    const winner = players[Math.floor(angle / seg)];
+    $('#result').textContent = '🎉 ' + winner;
+    $('#spin').disabled = false; vibrate(100);
+  }, 4100));
+}
+
+home();
+</script>
+</body>
+</html>
