@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import type { ManualBanana } from '../sim/sim';
 import { canvasTexture } from './assets';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 const LEN = 1.6;
 const R = 0.2;
@@ -59,7 +60,11 @@ export class PeelView {
     this.renderer.shadowMap.enabled = true;
     this.camera.position.set(0, 1.25, 4.2);
     this.camera.lookAt(0, 0.75, 0);
-    this.scene.add(new THREE.HemisphereLight('#fff6e0', '#5a4030', 1.6));
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.5;
+    pmrem.dispose();
+    this.scene.add(new THREE.HemisphereLight('#fff6e0', '#5a4030', 1.1));
     const key = new THREE.DirectionalLight('#ffffff', 2.2);
     key.position.set(2, 4, 3);
     key.castShadow = true;

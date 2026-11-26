@@ -90,8 +90,8 @@ export class PileView {
         const k = j * this.vw + i;
         pos[k * 3] = this.x0 + i;
         pos[k * 3 + 2] = this.y0 + j;
-        uv[k * 2] = (this.x0 + i) / 3.2;
-        uv[k * 2 + 1] = (this.y0 + j) / 3.2;
+        uv[k * 2] = (this.x0 + i) / 7;
+        uv[k * 2 + 1] = (this.y0 + j) / 7;
         if (i < this.vw - 1 && j < this.vh - 1) {
           const a = k, b = k + 1, c = k + this.vw, d = k + this.vw + 1;
           idx.push(a, c, b, b, c, d);
@@ -136,24 +136,28 @@ export class PileView {
     }
   }
 
-  // Höhe eines Eckpunkts = Mittel der vier angrenzenden Felder
+  // Höhe eines Eckpunkts = weicher Mittelwert der Felder ringsum (keine Stufen und Zacken)
   private updateVertex(i: number, j: number) {
     const x = this.x0 + i, y = this.y0 + j;
-    let sum = 0, n = 0, max = 0;
-    for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) {
-      const tx = x + dx, ty = y + dy;
-      if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) { n++; continue; }
-      const h = this.heights[tileIndex(tx, ty)];
-      sum += h; n++;
-      max = Math.max(max, h);
+    let sum = 0, wsum = 0, max = 0;
+    for (let ty = y - 2; ty <= y + 1; ty++) {
+      for (let tx = x - 2; tx <= x + 1; tx++) {
+        const dx = tx + 0.5 - x, dy = ty + 0.5 - y;
+        const w = Math.exp(-(dx * dx + dy * dy) / 1.1);
+        const h = tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H ? 0 : this.heights[tileIndex(tx, ty)];
+        sum += h * w;
+        wsum += w;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) max = Math.max(max, h);
+      }
     }
     const k = j * this.vw + i;
     const pos = this.geo.attributes.position.array as Float32Array;
     const col = this.geo.attributes.color.array as Float32Array;
-    const h = max > 0 ? sum / n : -0.08;
+    const avg = sum / wsum;
+    const h = max > 0 ? avg : avg > 0.15 ? avg * 0.6 : -0.08;
     pos[k * 3 + 1] = h;
     // Tiefer = dunkler (Schatten zwischen den Bananen)
-    const shade = max > 0 ? 0.72 + Math.min(0.28, h * 0.03) + hash(x, y) * 0.06 : 0.5;
+    const shade = h > 0 ? 0.72 + Math.min(0.28, h * 0.03) + hash(x, y) * 0.06 : 0.5;
     col[k * 3] = shade;
     col[k * 3 + 1] = shade * 0.97;
     col[k * 3 + 2] = shade * 0.9;
@@ -225,7 +229,8 @@ export class PileView {
       for (const ti of dirty) {
         this.heights[ti] = pileHeight(this.sim.pile[ti]);
         const x = ti % MAP_W, y = (ti / MAP_W) | 0;
-        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        // Glättung reicht zwei Felder weit
+        for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++) {
           const i = x + dx - this.x0, j = y + dy - this.y0;
           if (i >= 0 && j >= 0 && i < this.vw && j < this.vh) this.updateVertex(i, j);
         }

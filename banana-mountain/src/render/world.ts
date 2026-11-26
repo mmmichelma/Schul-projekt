@@ -10,6 +10,7 @@ import { Effects } from './effects';
 import { createModel, createGhost, Model, LAMP_MATS } from './models';
 import { floorTexture, wallTexture, hazardTexture, canvasTexture } from './assets';
 import { Character, nameSprite } from './character';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 export interface Quality {
   name: string;
@@ -89,7 +90,12 @@ export class GameRenderer {
     this.scene.fog = new THREE.Fog('#2b3038', 140, 320);
 
     // Licht
-    this.scene.add(new THREE.HemisphereLight('#e6eef8', '#4a4036', 1.25));
+    // Umgebungsspiegelung: Metall, Lack und Glas glänzen realistisch
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.45;
+    pmrem.dispose();
+    this.scene.add(new THREE.HemisphereLight('#e6eef8', '#4a4036', 0.7));
     this.sun = new THREE.DirectionalLight('#fff4e0', 2.4);
     this.sun.castShadow = true;
     this.sun.shadow.bias = -0.0004;

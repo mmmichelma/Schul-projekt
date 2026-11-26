@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { BUILDINGS, STAGES, BELT_TIERS } from '../sim/defs';
 import type { Status } from '../sim/sim';
-import { bananaGeometry, gearGeometry, hazardTexture, dripTexture, labelTexture, canvasTexture } from './assets';
+import { bananaGeometry, gearGeometry, hazardTexture, dripTexture, labelTexture, canvasTexture, rbox } from './assets';
 
 export interface ModelCtx {
   t: number;
@@ -84,17 +84,31 @@ function add<T extends THREE.Object3D>(parent: THREE.Object3D, o: T, x = 0, y = 
   parent.add(o);
   return o;
 }
-const boxG = new Map<string, THREE.BoxGeometry>();
+// Alle Kästen mit abgerundeten Kanten
 function box(p: THREE.Object3D, w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) {
-  const k = `${w},${h},${d}`;
-  if (!boxG.has(k)) boxG.set(k, new THREE.BoxGeometry(w, h, d));
-  return add(p, new THREE.Mesh(boxG.get(k)!, m), x, y, z);
+  return add(p, new THREE.Mesh(rbox(w, h, d), m), x, y, z);
 }
+// Zylinder: viele Segmente + abgerundete Kanten über eine kleine Fase
+const CYL = new Map<string, THREE.BufferGeometry>();
 function cyl(p: THREE.Object3D, rt: number, rb: number, h: number, m: THREE.Material, x = 0, y = 0, z = 0, seg = 16) {
-  return add(p, new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m), x, y, z);
+  const segs = Math.max(12, Math.min(48, seg * 2));
+  const k = `${rt},${rb},${h},${segs}`;
+  let g = CYL.get(k);
+  if (!g) {
+    // Profil mit kleiner Rundung an Ober- und Unterkante (Drehkörper)
+    const bev = Math.min(0.03, h * 0.2, Math.min(rt, rb) * 0.25);
+    const pts: THREE.Vector2[] = [new THREE.Vector2(0, -h / 2)];
+    const steps = 3;
+    for (let i = 0; i <= steps; i++) { const a = (i / steps) * Math.PI / 2; pts.push(new THREE.Vector2(rb - bev + Math.sin(a) * bev, -h / 2 + bev - Math.cos(a) * bev)); }
+    for (let i = 0; i <= steps; i++) { const a = (i / steps) * Math.PI / 2; pts.push(new THREE.Vector2(rt - bev + Math.cos(a) * bev, h / 2 - bev + Math.sin(a) * bev)); }
+    pts.push(new THREE.Vector2(0, h / 2));
+    g = bev > 0.002 ? new THREE.LatheGeometry(pts, segs) : new THREE.CylinderGeometry(rt, rb, h, segs);
+    CYL.set(k, g);
+  }
+  return add(p, new THREE.Mesh(g, m), x, y, z);
 }
 function sphere(p: THREE.Object3D, r: number, m: THREE.Material, x = 0, y = 0, z = 0) {
-  return add(p, new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), m), x, y, z);
+  return add(p, new THREE.Mesh(new THREE.SphereGeometry(r, 32, 22), m), x, y, z);
 }
 function group(p: THREE.Object3D, x = 0, y = 0, z = 0) {
   const g = new THREE.Group();
@@ -164,7 +178,7 @@ function finish(type: string, detail: THREE.Group, lamp: THREE.Mesh, height: num
   const def = BUILDINGS[type];
   const g = new THREE.Group();
   g.add(detail);
-  const lod = new THREE.Mesh(new THREE.BoxGeometry(def.w - 0.12, height, def.h - 0.12), std(LOD_COLORS[def.category], 0.6, 0.2));
+  const lod = new THREE.Mesh(rbox(def.w - 0.12, height, def.h - 0.12, 0.08), std(LOD_COLORS[def.category], 0.6, 0.2));
   lod.position.y = height / 2;
   lod.visible = false;
   lod.castShadow = true;
@@ -384,8 +398,8 @@ function buildMega(type: string): Model {
   box(yawG, 3.2, 0.35, 0.4, m.orange, 1.6, 0.6, 0).rotation.z = 0.35;
   const wheelG = group(yawG, 3.2, 1.2, 0);
   const wheel = group(wheelG);
-  add(wheel, new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.09, 8, 32), m.dark));
-  add(wheel, new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.06, 8, 24), m.steel));
+  add(wheel, new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.09, 16, 64), m.dark));
+  add(wheel, new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.06, 16, 48), m.steel));
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
     const sp = box(wheel, 1.1, 0.06, 0.06, m.steel, Math.cos(a) * 0.55, Math.sin(a) * 0.55, 0);
@@ -516,7 +530,7 @@ function buildCaramel(type: string): Model {
   box(d, 1.5, 0.06, 0.5, m.darker, 0, 0.2, 0.5);
   const pts = [];
   for (let i = 0; i <= 10; i++) { const t = i / 10; pts.push(new THREE.Vector2(0.15 + Math.sin(t * Math.PI * 0.55) * 0.6, t * 0.9)); }
-  const kettle = add(d, new THREE.Mesh(new THREE.LatheGeometry(pts, 28), m.copper), -0.05, 0.25, -0.1);
+  const kettle = add(d, new THREE.Mesh(new THREE.LatheGeometry(pts, 48), m.copper), -0.05, 0.25, -0.1);
   (kettle.material as THREE.Material).side = THREE.DoubleSide;
   const liquid = cyl(d, 0.58, 0.58, 0.04, m.caramel, -0.05, 1.05, -0.1, 28);
   for (const a of [0, 2.1, 4.2]) cyl(d, 0.04, 0.04, 0.3, m.dark, -0.05 + Math.cos(a) * 0.45, 0.2, -0.1 + Math.sin(a) * 0.45, 6);
@@ -594,7 +608,7 @@ function buildRefine(type: string): Model {
   const core = sphere(d, 0.28, std('#fff2b0', 0.2, 0.3, { emissive: '#ffcf40', emissiveIntensity: 1.2 }), 0, 1.2, 0);
   const rings: THREE.Mesh[] = [];
   for (let i = 0; i < 3; i++) {
-    const r = add(d, new THREE.Mesh(new THREE.TorusGeometry(0.45 + i * 0.12, 0.03, 8, 40), m.gold), 0, 1.2, 0);
+    const r = add(d, new THREE.Mesh(new THREE.TorusGeometry(0.45 + i * 0.12, 0.03, 16, 80), m.gold), 0, 1.2, 0);
     rings.push(r);
   }
   for (const [x, z] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) cyl(d, 0.04, 0.06, 0.8, m.gold, x, 1.0, z, 8);
@@ -632,7 +646,7 @@ function buildPack(type: string): Model {
   cyl(piston, 0.06, 0.06, 0.5, m.steel, 0, -0.2, 0, 10);
   box(piston, 0.4, 0.06, 0.4, m.dark, 0, -0.45, 0);
   const boxMesh = box(d, 0.36, 0.25, 0.3, m.cardboard, -0.1, 0.77, 0);
-  const tape = add(d, new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.05, 8, 20), m.cardboard), 0.6, 1.0, -0.4);
+  const tape = add(d, new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.05, 16, 40), m.cardboard), 0.6, 1.0, -0.4);
   const stack = group(d, 0.55, 0.64, 0.55);
   for (let i = 0; i < 3; i++) box(stack, 0.3, 0.2, 0.25, m.cardboard, 0, 0.1 + i * 0.21, 0);
   const lamp = lampAt(d, -0.75, 1.3, -0.75);
@@ -703,7 +717,7 @@ function buildSell1(type: string): Model {
   box(d, 1.4, 0.7, 0.5, m.wood, 0, 0.5, 0.45);
   box(d, 1.5, 0.06, 0.6, m.panel, 0, 0.88, 0.45);
   for (const [x, z] of [[-0.7, 0.7], [0.7, 0.7], [-0.7, -0.7], [0.7, -0.7]]) cyl(d, 0.04, 0.04, 1.6, m.steel, x, 0.95, z, 8);
-  const aw = add(d, new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.05, 1.7), std('#ffffff', 0.7, 0, { map: stripeTex() })), 0, 1.78, 0);
+  const aw = add(d, new THREE.Mesh(rbox(1.7, 0.05, 1.7, 0.02), std('#ffffff', 0.7, 0, { map: stripeTex() })), 0, 1.78, 0);
   aw.rotation.x = 0.12;
   const reg = group(d, 0.35, 0.92, 0.45);
   box(reg, 0.35, 0.2, 0.3, m.dark, 0, 0.1, 0);
@@ -782,9 +796,9 @@ function buildSell4(type: string): Model {
   cyl(d, 0.8, 1.0, 1.6, m.white, 0, 1.95, 0, 24);
   for (let i = 0; i < 5; i++) cyl(d, 0.81 - i * 0.04, 0.81 - i * 0.04, 0.05, m.glass, 0, 1.4 + i * 0.25, 0, 24);
   const globe = group(d, 0, 3.4, 0);
-  add(globe, new THREE.Mesh(new THREE.SphereGeometry(0.65, 24, 18), std('#2f7fd5', 0.4, 0.2)));
+  add(globe, new THREE.Mesh(new THREE.SphereGeometry(0.65, 36, 26), std('#2f7fd5', 0.4, 0.2)));
   add(globe, new THREE.Mesh(new THREE.SphereGeometry(0.66, 12, 8), std('#3fae4b', 0.6, 0, { wireframe: true })));
-  add(globe, new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.035, 8, 40), m.gold)).rotation.x = 1.2;
+  add(globe, new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.035, 16, 80), m.gold)).rotation.x = 1.2;
   const dish = group(d, 1.2, 1.15, -1.2);
   add(dish, new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 8, 0, Math.PI * 2, 0, Math.PI / 3), std('#e0e4ea', 0.4, 0.3, { side: THREE.DoubleSide })), 0, 0.5, 0).rotation.x = Math.PI * 0.8;
   cyl(dish, 0.04, 0.04, 0.5, m.dark, 0, 0.25, 0, 6);
@@ -859,14 +873,14 @@ function buildSilo(type: string): Model {
 
 // ================================================================ Logistik
 function arrow(p: THREE.Object3D, mat: THREE.Material, x: number, z: number, yaw: number) {
-  const a = add(p, new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 3), mat), x, 0.36, z);
+  const a = add(p, new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 12), mat), x, 0.36, z);
   a.rotation.set(0, yaw, -Math.PI / 2);
   return a;
 }
 
 // ---------------------------------------------------------------- Knoten: kleine Band-Kreuzungen
 // Lokale Richtungen: 0 = vorne (+x), 1 = rechts (+z), 2 = hinten (−x), 3 = links (−z)
-const NODE_ARROW = new THREE.ConeGeometry(0.075, 0.17, 3).rotateZ(-Math.PI / 2);
+const NODE_ARROW = new THREE.ConeGeometry(0.075, 0.17, 12).rotateZ(-Math.PI / 2);
 const ARROW_ON = new THREE.MeshBasicMaterial({ color: '#46ff7a' });
 const ARROW_IN = new THREE.MeshBasicMaterial({ color: '#7fc8ff' });
 const ARROW_OFF = new THREE.MeshBasicMaterial({ color: '#4a4f57' });
@@ -889,7 +903,7 @@ function nodeDeck(d: THREE.Group) {
   box(d, 0.6, 0.07, 0.94, m.rubber, 0, 0.2, 0);
   for (const [x, z] of [[-0.39, -0.39], [0.39, -0.39], [-0.39, 0.39], [0.39, 0.39]]) box(d, 0.16, 0.12, 0.16, m.dark, x, 0.22, z);
   const ringMat = std(BELT_TIERS[0].color, 0.4, 0.5);
-  add(d, new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.022, 6, 32).rotateX(Math.PI / 2), ringMat), 0, 0.24, 0);
+  add(d, new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.022, 12, 64).rotateX(Math.PI / 2), ringMat), 0, 0.24, 0);
   let lastTier = 0;
   return (tier = 0) => {
     if (tier === lastTier) return;

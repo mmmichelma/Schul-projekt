@@ -4,26 +4,26 @@
  * Blickrichtung: +x (wie alle Modelle im Spiel).
  */
 import * as THREE from 'three';
-import { bananaGeometry } from './assets';
+import { bananaGeometry, rbox } from './assets';
 
 const std = (color: string, rough = 0.6, metal = 0, extra: THREE.MeshStandardMaterialParameters = {}) =>
   new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
 
 const G = {
-  thigh: new THREE.CapsuleGeometry(0.075, 0.26, 4, 10),
-  shin: new THREE.CapsuleGeometry(0.065, 0.26, 4, 10),
-  boot: new THREE.BoxGeometry(0.24, 0.1, 0.13),
-  hips: new THREE.CapsuleGeometry(0.12, 0.1, 4, 12),
-  torso: new THREE.CapsuleGeometry(0.17, 0.24, 6, 14),
-  head: new THREE.SphereGeometry(0.2, 20, 16),
-  helmet: new THREE.SphereGeometry(0.215, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
-  brim: new THREE.CylinderGeometry(0.25, 0.25, 0.025, 20),
-  upper: new THREE.CapsuleGeometry(0.058, 0.18, 4, 10),
-  fore: new THREE.CapsuleGeometry(0.05, 0.17, 4, 10),
-  hand: new THREE.SphereGeometry(0.06, 10, 8),
+  thigh: new THREE.CapsuleGeometry(0.075, 0.26, 6, 18),
+  shin: new THREE.CapsuleGeometry(0.065, 0.26, 6, 18),
+  boot: rbox(0.24, 0.1, 0.13, 0.04),
+  hips: new THREE.CapsuleGeometry(0.12, 0.1, 6, 20),
+  torso: new THREE.CapsuleGeometry(0.17, 0.24, 8, 24),
+  head: new THREE.SphereGeometry(0.2, 32, 24),
+  helmet: new THREE.SphereGeometry(0.215, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+  brim: new THREE.CylinderGeometry(0.25, 0.25, 0.025, 36),
+  upper: new THREE.CapsuleGeometry(0.058, 0.18, 6, 16),
+  fore: new THREE.CapsuleGeometry(0.05, 0.17, 6, 16),
+  hand: new THREE.SphereGeometry(0.06, 16, 12),
   eye: new THREE.SphereGeometry(0.03, 10, 8),
-  stripe: new THREE.BoxGeometry(0.36, 0.035, 0.37),
-  pack: new THREE.BoxGeometry(0.22, 0.3, 0.3),
+  stripe: rbox(0.36, 0.035, 0.37, 0.012),
+  pack: rbox(0.22, 0.3, 0.3, 0.05),
 };
 
 export interface CharacterLook { shirt: string; vest: string; pants: string; skin: string; helmet: string }

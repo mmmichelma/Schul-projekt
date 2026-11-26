@@ -4,6 +4,19 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+
+// Kasten mit abgerundeten Kanten (statt scharfer Ecken) – zwischengespeichert nach Größe
+const RBOX = new Map<string, THREE.BufferGeometry>();
+export function rbox(w: number, h: number, d: number, radius?: number): THREE.BufferGeometry {
+  const r = radius ?? Math.min(0.06, Math.min(w, h, d) * 0.22);
+  const k = `${w},${h},${d},${r}`;
+  let g = RBOX.get(k);
+  if (!g) { g = new RoundedBoxGeometry(w, h, d, 3, Math.max(0.001, r)); RBOX.set(k, g); }
+  return g;
+}
+// Für Merges: eine eigene Kopie
+export const rboxCopy = (w: number, h: number, d: number, radius?: number) => rbox(w, h, d, radius).clone();
 
 // ---------------------------------------------------------------- Hilfen
 export function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void, repeat = true): THREE.CanvasTexture {
@@ -55,7 +68,7 @@ export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
   const body = new THREE.Color(o.body ?? '#ffd52e');
   const ridge = body.clone().multiplyScalar(0.86);
   const green = new THREE.Color(o.body ? o.body : '#c2cf3a');
-  const tip = new THREE.Color(o.tip ?? '#3b2712');
+  const tip = new THREE.Color(o.tip ?? '#6b4a22');
   const stem = new THREE.Color(o.stem ?? '#8a9a3a');
   const cut = new THREE.Color('#5a4320');
   const speck = new THREE.Color('#7a4c1c');
@@ -98,7 +111,7 @@ export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
       else {
         c.copy(Math.cos(5 * a) > 0.93 && !plain ? ridge : body);
         if (!plain && t > 0.6) c.lerp(green, Math.min(1, (t - 0.6) / 0.26) * 0.75);
-        if (!plain && t < 0.09) c.lerp(tip, (0.09 - t) / 0.09 * 0.6);
+        if (!plain && t < 0.07) c.lerp(tip, (0.07 - t) / 0.07 * 0.4);
         if (stripes && Math.floor(t * 9) % 2 === 0) c.copy(stripes);
         if (!plain && rnd(i * 31 + k * 7) < 0.025) c.lerp(speck, 0.5);
       }
@@ -228,7 +241,7 @@ export function gearGeometry(r: number, teeth: number, thick: number): THREE.Buf
   const hole = new THREE.Path();
   hole.absarc(0, 0, r * 0.25, 0, Math.PI * 2, true);
   shape.holes.push(hole);
-  const g = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
+  const g = new THREE.ExtrudeGeometry(shape, { depth: thick * 0.7, bevelEnabled: true, bevelThickness: thick * 0.15, bevelSize: r * 0.03, bevelSegments: 2, curveSegments: 6 });
   g.translate(0, 0, -thick / 2);
   return g;
 }
@@ -243,12 +256,15 @@ export function straightBelt(): { surface: THREE.BufferGeometry; frame: THREE.Bu
   surface.rotateX(-Math.PI / 2);
   surface.translate(0, BELT_Y, 0);
   const frame = mergeGeometries([
-    new THREE.BoxGeometry(1, 0.12, BELT_HALF * 2).translate(0, 0.07, 0),
-    new THREE.BoxGeometry(1, 0.1, 0.07).translate(0, 0.18, BELT_HALF + 0.035),
-    new THREE.BoxGeometry(1, 0.1, 0.07).translate(0, 0.18, -BELT_HALF - 0.035),
-    new THREE.BoxGeometry(0.08, 0.06, 0.06).translate(-0.45, 0.02, 0.36),
-    new THREE.BoxGeometry(0.08, 0.06, 0.06).translate(-0.45, 0.02, -0.36),
-  ])!;
+    new THREE.BoxGeometry(1, 0.12, BELT_HALF * 2).translate(0, 0.07, 0).toNonIndexed(),
+    rboxCopy(1.0, 0.1, 0.07, 0.025).translate(0, 0.18, BELT_HALF + 0.035),
+    rboxCopy(1.0, 0.1, 0.07, 0.025).translate(0, 0.18, -BELT_HALF - 0.035),
+    // Rollen an den Enden
+    new THREE.CylinderGeometry(0.05, 0.05, BELT_HALF * 2, 16).rotateX(Math.PI / 2).translate(-0.46, 0.12, 0).toNonIndexed(),
+    new THREE.CylinderGeometry(0.05, 0.05, BELT_HALF * 2, 16).rotateX(Math.PI / 2).translate(0.46, 0.12, 0).toNonIndexed(),
+    rboxCopy(0.08, 0.06, 0.06, 0.02).translate(-0.45, 0.02, 0.36),
+    rboxCopy(0.08, 0.06, 0.06, 0.02).translate(-0.45, 0.02, -0.36),
+  ].map((g) => { g.deleteAttribute('uv'); return g; }))!;
   return { surface, frame };
 }
 
@@ -369,7 +385,7 @@ export function beltTexture(accent: string) {
 export function bananaPileTexture() {
   return canvasTexture(1024, 1024, (ctx) => {
     const r = rand(42);
-    ctx.fillStyle = '#7a5a10';
+    ctx.fillStyle = '#c99812';
     ctx.fillRect(0, 0, 1024, 1024);
     // Eine Banane: Halbmond mit Kante, Lichtkante, brauner Spitze und grünlichem Stiel
     const banana = (x: number, y: number, a: number, L: number, ripe: number) => {
