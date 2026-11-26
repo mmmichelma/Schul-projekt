@@ -9,9 +9,9 @@
 ;                LED-Rot  (Schadstoff)    -> PD.0
 ;                LED-Gruen (Rechtslauf)   -> PD.1
 ;
-;  Funktion:  S1 = 1 und S2 = 1 -> Motor dreht rechts (Halbschritt)
-;             sonst             -> Motor aus
-;             LED-Rot zeigt S1, LED-Gruen zeigt S2
+;  Funktion:  T1 gedrueckt (S1 = 1) -> LED-Rot an
+;             T2 gedrueckt (S2 = 1) -> LED-Gruen an + Motor dreht rechts
+;             T2 nicht gedrueckt    -> Motor aus
 ;  (S0 und S3 werden laut Aufgabe nicht beruecksichtigt)
 ;
 ;  Controller: ATmega8 (myAVR Board Light)
@@ -58,9 +58,7 @@ mainloop:
         ori ledreg, 0b00000010  ; dann LED-Gruen an
         out PORTD, ledreg
 
-        ; ---- Bedingung fuer Motor pruefen ----
-        sbic PINC, 0            ; S1 = 1?
-        rjmp motor_aus          ; nein -> Motor aus
+        ; ---- Motor nur bei T2 (Nord-Sued-Wind) ----
         sbic PINC, 1            ; S2 = 1 (Nord-Sued-Wind)?
         rjmp motor_aus          ; nein -> Motor aus
 
