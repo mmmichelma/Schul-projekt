@@ -386,7 +386,12 @@ export class GameRenderer {
       this.portGroup.add(m);
     };
     const t = b.type;
-    if (t === 'splitter') { for (const d of [b.dir, (b.dir + 1) % 4, (b.dir + 3) % 4]) place(b.x + DX[d], b.y + DY[d], d, outMat); }
+    const mask = (b as { outMask?: number }).outMask ?? 7;
+    if (t === 'crossing') {
+      for (let d = 0; d < 4; d++) place(b.x + DX[d], b.y + DY[d], d, outMat);
+      return;
+    }
+    if (t === 'splitter') { [b.dir, (b.dir + 1) % 4, (b.dir + 3) % 4].forEach((d, i) => { if (mask & (1 << i)) place(b.x + DX[d], b.y + DY[d], d, outMat); }); }
     else if (t === 'filter') { place(b.x + DX[b.dir], b.y + DY[b.dir], b.dir, outMat); for (const d of [(b.dir + 1) % 4, (b.dir + 3) % 4]) place(b.x + DX[d], b.y + DY[d], d, outMat); }
     else if (hasOutput(t)) { const [ox, oy] = outputCell(b); place(ox, oy, b.dir, outMat); }
     if (t === 'merger') { for (const d of [b.dir, (b.dir + 1) % 4, (b.dir + 3) % 4]) place(b.x - DX[d], b.y - DY[d], d, inMat); }
@@ -504,6 +509,7 @@ export class GameRenderer {
       v.model.update({
         t: this.time + e.id * 0.37, dt, status: e.status, speed: machineSpeed(def, e.level) || 1,
         fill: def.category === 'storage' ? e.inBuf.length / cap : 0, target, filterStage: e.filter,
+        outMask: e.outMask, tier: e.level - 1, prio: e.prio,
       });
       if (e.status === 'working' && v.model.emitters.length && Math.random() < dt * 5) {
         for (const em of v.model.emitters) {

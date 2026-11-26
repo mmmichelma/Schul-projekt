@@ -86,9 +86,10 @@ const B: BuildingDef[] = [
   { id: 'storage', name: 'Lager', category: 'storage', price: 1500, w: 2, h: 2, capacity: 1000, rate: 60, desc: 'Großes Lager (1.000).' },
   { id: 'silo', name: 'Bananensilo', category: 'storage', price: 40000, w: 3, h: 3, capacity: 20000, rate: 400, desc: 'Riesiges Silo (20.000).' },
   // ---------------------------------------------------------------- Logistik
-  { id: 'splitter', name: 'Förderbandteiler', category: 'logistic', price: 20, w: 1, h: 1, desc: 'Verteilt abwechselnd nach vorne, links und rechts.' },
-  { id: 'merger', name: 'Förderbandverbinder', category: 'logistic', price: 20, w: 1, h: 1, desc: 'Führt Bänder von hinten, links und rechts zusammen.' },
-  { id: 'filter', name: 'Filter', category: 'logistic', price: 100, w: 1, h: 1, desc: 'Gewählter Zustand geht geradeaus, alles andere zur Seite.' },
+  { id: 'splitter', name: 'Förderbandteiler', category: 'logistic', price: 20, w: 1, h: 1, desc: 'Teilt ein Band auf vorne, rechts und links – gleichmäßig oder mit Vorfahrt. Auch direkt auf ein Band setzbar.' },
+  { id: 'merger', name: 'Förderbandverbinder', category: 'logistic', price: 20, w: 1, h: 1, desc: 'Führt bis zu drei Bänder fair zu einem zusammen.' },
+  { id: 'filter', name: 'Filter', category: 'logistic', price: 100, w: 1, h: 1, desc: 'Gewählte Zustände gehen geradeaus, alle anderen zur Seite.' },
+  { id: 'crossing', name: 'Kreuzung', category: 'logistic', price: 30, w: 1, h: 1, desc: 'Zwei Bänder kreuzen sich, ohne sich zu vermischen.' },
   { id: 'tunnelIn', name: 'Tunnel-Eingang', category: 'logistic', price: 50, w: 1, h: 1, desc: 'Unterirdisches Band – verbindet sich mit dem nächsten Ausgang (max. 6 Felder).' },
   { id: 'tunnelOut', name: 'Tunnel-Ausgang', category: 'logistic', price: 50, w: 1, h: 1, desc: 'Ende eines unterirdischen Bandes.' },
 ];
@@ -114,6 +115,9 @@ export const BELT_TIERS: BeltTier[] = [
 export const beltThroughput = (t: number) => BELT_TIERS[t].cap * BELT_TIERS[t].speed;
 
 export const MAX_LEVEL = 10;
+// Teiler, Verbinder, Filter und Kreuzung sind kleine Kreuzungs-Bänder mit Band-Stufen
+export const NODE_TYPES = new Set(['splitter', 'merger', 'filter', 'crossing']);
+export const nodeTierCost = (tier: number) => (BELT_TIERS[tier + 1].price - BELT_TIERS[tier].price) * 10;
 export const TUNNEL_RANGE = 6;
 export const LOGISTIC_CAP = 12;
 

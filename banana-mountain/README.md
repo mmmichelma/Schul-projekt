@@ -31,6 +31,27 @@ Tests: `npm test`
    Upgrades bis Level 10. Wo der Berg abgetragen ist, darfst du bauen.
 5. **Ende**: Sind alle 1.000.000 Bananen verkauft, siehst du eine Abschlussstatistik.
 
+### Förderbänder & Logistik
+
+* **Echte Plätze**: Jede Banane braucht Platz auf dem Band. Wenn es vorne voll ist, staut es sich zurück.
+* **Seitliches Einfädeln**: Ein Band, das von der Seite auf ein anderes trifft, schiebt seine Bananen
+  in der Mitte ein, aber nur in eine Lücke. Das Hauptband hat Vorfahrt.
+* **Förderbandteiler**: Ausgänge vorne, rechts und links lassen sich einzeln an- und abschalten.
+  Modus *Gleichmäßig* (reihum) oder *Vorne zuerst* (Überlauf zur Seite).
+* **Förderbandverbinder**: führt bis zu drei Bänder zusammen, *fair abwechselnd* oder *hinten hat Vorfahrt*.
+* **Filter**: mehrere Zustände wählbar. Die gehen geradeaus, alles andere zur Seite.
+* **Kreuzung**: Zwei Bänder kreuzen sich, ohne sich zu vermischen.
+* **Tunnel**: Ein Band läuft bis zu 6 Felder unter anderen Gebäuden durch.
+* Teiler, Verbinder, Filter und Kreuzung gibt es wie die Bänder in 5 Stufen (Standard bis Hyper).
+  Man kann sie **direkt auf ein bestehendes Band setzen**, und die Bananen darauf bleiben erhalten.
+
+### Online mit Freunden
+
+Mit einem Konto (Name + Passwort, keine E-Mail) wird deine Fabrik online gespeichert.
+Freunde fügst du über ihren Namen hinzu. Ist ein Freund online, kannst du **seiner Fabrik beitreten**
+und mitbauen: gemeinsames Geld, aber jeder hat eigene Hände zum Schälen. Dazu gibt es Chat, die Mauszeiger
+der anderen und eine Bestenliste. Server ist ein Supabase-Projekt (Datenbank + Realtime).
+
 ### Steuerung
 | Aktion | Maus / Tastatur | Touch |
 | --- | --- | --- |

@@ -298,3 +298,11 @@ input:focus { border-color: var(--yellow); background: rgba(255, 255, 255, 0.09)
   .chat, .chat-btn { right: 6px; bottom: 120px; }
   .chat { width: calc(100vw - 12px); }
 }
+
+/* ------------------------------------------------------------ Knoten-Einstellungen */
+.node-cfg { margin: 4px 0 10px; }
+.node-cfg small { color: var(--muted); display: block; margin-bottom: 5px; }
+.node-cfg .seg.wide { margin: 0 0 6px; }
+.toggles { display: flex; gap: 5px; }
+.toggles button { flex: 1; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.toggles button.active { border-color: var(--green); background: rgba(61, 220, 106, 0.15); color: var(--text); }

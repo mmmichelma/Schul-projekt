@@ -44,7 +44,7 @@ export async function renderIcons(): Promise<IconMap> {
 
   for (const def of BUILDING_LIST) {
     const m = createModel(def.id);
-    m.update({ t: 0.3, dt: 0.016, status: 'working', speed: def.speed || 1, fill: 0.7, target: { x: 1, z: -0.4 }, filterStage: 1 });
+    m.update({ t: 0.3, dt: 0.016, status: 'working', speed: def.speed || 1, fill: 0.7, target: { x: 1, z: -0.4 }, filterStage: 6, tier: 0 });
     m.group.rotation.y = 0;
     shot(m.group, def.id);
     await new Promise((r) => setTimeout(r, 0));

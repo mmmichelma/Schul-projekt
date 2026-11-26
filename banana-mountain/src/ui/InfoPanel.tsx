@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import { BUILDINGS, BELT_TIERS, STAGES, MAX_LEVEL, machineSpeed, qualityMult, collectorRadius, bufferCap, beltThroughput, LOGISTIC_CAP } from '../sim/defs';
+import { BUILDINGS, BELT_TIERS, STAGES, MAX_LEVEL, machineSpeed, qualityMult, collectorRadius, bufferCap, beltThroughput, LOGISTIC_CAP, NODE_TYPES } from '../sim/defs';
 import type { Item, Building } from '../sim/sim';
 import { formatMoney, fmtInt, fmtNum, fmtPct } from './format';
 import { IconUp, IconRotate, IconMove, IconPower, IconTrash, IconCopy, IconClose } from './Icons';
@@ -74,7 +74,7 @@ export function InfoPanel({ engine }: { engine: Engine }) {
         <button className="x" onClick={close}><IconClose /></button>
       </div>
       <dl>
-        {def.upgradable && <><dt>Level</dt><dd><span className="lvl">{b.level}</span> / {MAX_LEVEL}</dd></>}
+        {def.upgradable && !NODE_TYPES.has(b.type) && <><dt>Level</dt><dd><span className="lvl">{b.level}</span> / {MAX_LEVEL}</dd></>}
         {(cat === 'collector' || cat === 'machine') && <><dt>Geschwindigkeit</dt><dd>{fmtNum(speed, 2)} Bananen/s</dd></>}
         {cat === 'collector' && <>
           <dt>Arbeitsradius</dt><dd>{collectorRadius(def, b.level)} Felder</dd>
@@ -89,17 +89,53 @@ export function InfoPanel({ engine }: { engine: Engine }) {
         {cat === 'machine' && <><dt>Eingang</dt><dd>{b.inBuf.length} / {bufferCap(speed)} {b.inBuf.length ? `(${stageSummary(b.inBuf)})` : ''}</dd></>}
         {(cat === 'collector' || cat === 'machine') && <><dt>Ausgang</dt><dd>{b.outBuf.length} / {bufferCap(speed)} {b.outBuf.length ? `(${stageSummary(b.outBuf)})` : ''}</dd></>}
         {cat === 'storage' && <><dt>Bestand</dt><dd>{fmtInt(b.inBuf.length)} / {fmtInt(def.capacity!)}</dd><dt>Inhalt</dt><dd>{stageSummary(b.inBuf)}</dd><dt>Ausgabe</dt><dd>{def.rate}/s</dd></>}
-        {cat === 'logistic' && b.type !== 'tunnelIn' && <><dt>Puffer</dt><dd>{b.outBuf.length} / {LOGISTIC_CAP}</dd></>}
+        {b.type === 'tunnelOut' && <><dt>Puffer</dt><dd>{b.outBuf.length} / {LOGISTIC_CAP}</dd></>}
+        {NODE_TYPES.has(b.type) && <>
+          <dt>Stufe</dt><dd>{BELT_TIERS[b.level - 1].name}</dd>
+          <dt>Durchsatz</dt><dd>{fmtNum(beltThroughput(b.level - 1), 0)} Bananen/s pro Weg</dd>
+          <dt>Unterwegs</dt><dd>{b.lanes.reduce((n, l) => n + l.length, 0)}</dd>
+        </>}
         {b.type === 'tunnelIn' && <><dt>Verbindung</dt><dd>{b.link ? 'Mit Ausgang verbunden' : 'Kein Ausgang in Reichweite (6 Felder, gleiche Richtung)'}</dd><dt>Unterwegs</dt><dd>{b.transit.length}</dd></>}
         {(cat === 'collector' || cat === 'machine') && <><dt>Gesamt</dt><dd>{fmtInt(b.processed)} Bananen</dd></>}
         {upPrice !== null && <><dt>Upgrade-Kosten</dt><dd>{formatMoney(upPrice)}</dd></>}
       </dl>
+      {(b.type === 'splitter' || b.type === 'filter') && (
+        <div className="node-cfg">
+          <small>Ausgänge</small>
+          <div className="toggles">
+            {['Vorne', 'Rechts', 'Links'].map((n, i) => (
+              <button key={n} className={b.outMask & (1 << i) ? 'active' : ''} onClick={() => engine.nodeCfg(b.id, { outMask: b.outMask ^ (1 << i) })}>{n}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {b.type === 'splitter' && (
+        <div className="node-cfg">
+          <small>Verteilung</small>
+          <div className="seg wide">
+            <button className={!b.prio ? 'active' : ''} onClick={() => engine.nodeCfg(b.id, { prio: false })}>Gleichmäßig</button>
+            <button className={b.prio ? 'active' : ''} onClick={() => engine.nodeCfg(b.id, { prio: true })}>Vorne zuerst</button>
+          </div>
+          <small className="note">{b.prio ? 'Alles geht nach vorne. Erst wenn es dort staut, läuft der Rest zur Seite über.' : 'Reihum auf alle aktiven Ausgänge. Ist einer voll, bekommt der nächste die Banane.'}</small>
+        </div>
+      )}
+      {b.type === 'merger' && (
+        <div className="node-cfg">
+          <small>Zusammenführen</small>
+          <div className="seg wide">
+            <button className={!b.prio ? 'active' : ''} onClick={() => engine.nodeCfg(b.id, { prio: false })}>Fair abwechselnd</button>
+            <button className={b.prio ? 'active' : ''} onClick={() => engine.nodeCfg(b.id, { prio: true })}>Hinten hat Vorfahrt</button>
+          </div>
+          <small className="note">{b.prio ? 'Das Band von hinten geht immer vor – die Seiten füllen nur Lücken.' : 'Alle Eingänge kommen reihum dran.'}</small>
+        </div>
+      )}
+      {b.type === 'crossing' && <p className="note">Bananen fahren geradeaus über die Kreuzung – von links nach rechts und von oben nach unten, ohne sich zu vermischen.</p>}
       {b.type === 'filter' && (
         <div className="filter-pick">
-          <small>Geradeaus durchlassen:</small>
+          <small>Geradeaus durchlassen (mehrere möglich) – alle anderen gehen zur Seite:</small>
           <div className="stage-chips">
             {STAGES.map((s, i) => (
-              <button key={i} className={b.filter === i ? 'active' : ''} onClick={() => engine.setFilter(b.id, i)} title={s.name}>
+              <button key={i} className={(b.filter >> i) & 1 ? 'active' : ''} onClick={() => engine.nodeCfg(b.id, { mask: b.filter ^ (1 << i) })} title={s.name}>
                 <i style={{ background: s.color }} />{s.short}
               </button>
             ))}
@@ -109,7 +145,7 @@ export function InfoPanel({ engine }: { engine: Engine }) {
       <div className="actions">
         {upPrice !== null && (
           <button className="btn" disabled={sim.money < upPrice} onClick={() => { if (engine.upgradeOne(b.id)) sfx.upgrade(); }}>
-            <IconUp />Verbessern auf Level {b.level + 1} – {formatMoney(upPrice)}
+            <IconUp />{NODE_TYPES.has(b.type) ? `Auf ${BELT_TIERS[b.level].name} verbessern` : `Verbessern auf Level ${b.level + 1}`} – {formatMoney(upPrice)}
           </button>
         )}
         <button className="btn ghost" onClick={() => engine.rotateTool()}><IconRotate />Drehen</button>

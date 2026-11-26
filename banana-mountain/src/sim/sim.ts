@@ -7,7 +7,7 @@
  */
 import {
   TOTAL, MAP_W, MAP_H, PILE_CX, PILE_CY, PILE_R, DT, DX, DY, STAGES,
-  BUILDINGS, BuildingDef, BELT_TIERS, MAX_LEVEL, TUNNEL_RANGE, LOGISTIC_CAP,
+  BUILDINGS, BuildingDef, BELT_TIERS, MAX_LEVEL, TUNNEL_RANGE, LOGISTIC_CAP, NODE_TYPES, nodeTierCost,
   machineSpeed, qualityMult, upgradeCost, collectorRadius, bufferCap,
   MANUAL_UPGRADES, ManualUpgradeId, AUTOGRAB_RATE, APPRENTICE_RATE,
 } from './defs';
@@ -17,6 +17,7 @@ export interface Item {
   q: number;  // Produkt aller Qualitätsboni
   p: number;  // Position auf dem aktuellen Bandfeld (0 = Eingang, 1 = Ausgang)
   dp: number; // Bewegung im letzten Takt (für flüssige Darstellung)
+  o?: number; // seitlicher Versatz beim Einfädeln (nur Darstellung)
 }
 
 export type Status = 'working' | 'idle' | 'blocked' | 'off';
@@ -53,8 +54,12 @@ export interface Building {
   status: Status;
   busy: number;      // Auslastung (gleitender Mittelwert 0..1)
   processed: number;
-  filter: number;    // Filter: durchgelassener Zustand
+  filter: number;    // Filter: Bitmaske der durchgelassenen Zustände
   rr: number;        // Teiler: Reihum-Zähler
+  rr2: number;       // Verbinder: Reihum-Zähler der Eingänge
+  outMask: number;   // Teiler/Filter: aktive Ausgänge (1 = vorne, 2 = rechts, 4 = links)
+  prio: boolean;     // Teiler: vorne zuerst · Verbinder: hinten zuerst
+  lanes: Item[][];   // Kreuzungs-Bänder: 0..3 Einfahrt je Seite, 4..7 Ausfahrt je Richtung
   link: number;      // Tunnel: ID des Ausgangs
   transit: Transit[];
   bucket: number;    // Verkauf/Lager: Kontingent pro Takt
@@ -109,6 +114,8 @@ export interface BlueprintEntry {
   tier?: number;
   level?: number;
   filter?: number;
+  outMask?: number;
+  prio?: boolean;
 }
 export interface Blueprint { entries: BlueprintEntry[]; w: number; h: number }
 
@@ -118,6 +125,14 @@ export function tileIndex(x: number, y: number) { return y * MAP_W + x; }
 export const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H;
 
 export function stageValue(it: { s: number; q: number }) { return STAGES[it.s].value * it.q; }
+
+// Kaufpreis eines Gebäudes inklusive bereits gekaufter Level
+export function buildCost(type: string, level: number): number {
+  const def = BUILDINGS[type];
+  let c = def.price;
+  for (let l = 1; l < level; l++) c += NODE_TYPES.has(type) ? nodeTierCost(l - 1) : upgradeCost(def, l);
+  return c;
+}
 
 // Hilfsfunktion: lokale Koordinaten eines Gebäudes (Ausgang zeigt lokal nach +x) -> Welt
 export function localToWorld(x: number, y: number, dir: number, w: number, h: number, lx: number, ly: number): [number, number] {
@@ -468,6 +483,10 @@ export class Sim {
   }
 
   canPlace(type: string, x: number, y: number, dir: number, ignore = 0): boolean {
+    if (NODE_TYPES.has(type) && !ignore) {
+      const e = this.entAt(x, y);
+      if (e && e.kind === 'belt') return true;
+    }
     return this.footprint(type, x, y, dir).every(([cx, cy]) => this.cellFree(cx, cy, ignore));
   }
 
@@ -475,7 +494,8 @@ export class Sim {
     const [w, h] = rotatedSize(BUILDINGS[type], dir);
     return {
       kind: 'building', id: this.nextId++, type, x, y, dir, w, h, level, invested, enabled: true,
-      inBuf: [], outBuf: [], progress: 0, status: 'idle', busy: 0, processed: 0, filter: 1, rr: 0, link: 0,
+      inBuf: [], outBuf: [], progress: 0, status: 'idle', busy: 0, processed: 0, filter: 2, rr: 0, rr2: 0, outMask: 7, prio: false,
+      lanes: NODE_TYPES.has(type) ? [[], [], [], [], [], [], [], []] : [], link: 0,
       transit: [], bucket: 0, radTiles: null, radIdx: 0, target: -1, lastWork: -10,
     };
   }
@@ -490,16 +510,36 @@ export class Sim {
     this.structVersion++;
   }
 
-  place(type: string, x: number, y: number, dir: number, opts: { free?: boolean; level?: number; filter?: number } = {}): Building | null {
+  place(type: string, x: number, y: number, dir: number, opts: { free?: boolean; level?: number; filter?: number; outMask?: number; prio?: boolean } = {}): Building | null {
     const def = BUILDINGS[type];
     if (!def || !this.canPlace(type, x, y, dir)) return null;
     const level = opts.level || 1;
-    let cost = opts.free ? 0 : def.price;
-    if (!opts.free) for (let l = 1; l < level; l++) cost += upgradeCost(def, l);
+    const cost = opts.free ? 0 : buildCost(type, level);
     if (this.money < cost) return null;
+    // Knoten direkt auf ein Band gesetzt? Band ersetzen, Bananen übernehmen
+    let replaced: Belt | null = null;
+    const under = this.entAt(x, y);
+    if (under && under.kind === 'belt') {
+      replaced = under;
+      this.occupy(under, false);
+      this.ents.delete(under.id);
+      this.money += under.invested;
+    }
     this.money -= cost;
     const b = this.newBuilding(type, x, y, dir, level, cost);
     if (opts.filter !== undefined) b.filter = opts.filter;
+    if (opts.outMask !== undefined) b.outMask = opts.outMask;
+    if (opts.prio !== undefined) b.prio = opts.prio;
+    if (replaced) {
+      const side = (replaced.dir + 2) % 4;
+      const lane = b.lanes[side];
+      const spacing = 2 / BELT_TIERS[level - 1].cap;
+      for (const it of replaced.items) {
+        const p = lane.length ? lane[lane.length - 1].p - spacing : 1;
+        if (lane.length < BELT_TIERS[level - 1].cap && p >= 0 && this.nodeAccepts(b, replaced.dir)) { it.p = p; it.dp = 0; lane.push(it); }
+        else { it.p = 0; it.dp = 0; this.salvage.push(it); }
+      }
+    }
     this.ents.set(b.id, b);
     this.occupy(b, true);
     this.stats.built++;
@@ -542,7 +582,7 @@ export class Sim {
 
   private collectItems(e: Ent): Item[] {
     if (e.kind === 'belt') return e.items;
-    return e.inBuf.concat(e.outBuf, e.transit.map((t) => t.it));
+    return e.inBuf.concat(e.outBuf, e.transit.map((t) => t.it), ...e.lanes);
   }
 
   // Abreißen: 100 % Erstattung, Bananen wandern in die Bergungskiste
@@ -589,6 +629,7 @@ export class Sim {
     const e = this.ents.get(id);
     if (!e) return null;
     if (e.kind === 'belt') return e.tier < BELT_TIERS.length - 1 ? BELT_TIERS[e.tier + 1].price - BELT_TIERS[e.tier].price : null;
+    if (NODE_TYPES.has(e.type)) return e.level < BELT_TIERS.length ? nodeTierCost(e.level - 1) : null;
     const def = BUILDINGS[e.type];
     if (!def.upgradable || e.level >= MAX_LEVEL) return null;
     return upgradeCost(def, e.level);
@@ -613,7 +654,18 @@ export class Sim {
 
   setFilter(id: number, stage: number) {
     const e = this.ents.get(id);
-    if (e && e.kind === 'building' && e.type === 'filter') { e.filter = stage; this.structVersion++; }
+    if (e && e.kind === 'building' && e.type === 'filter') { e.filter = 1 << stage; this.structVersion++; }
+  }
+
+  // Einstellungen von Teiler, Verbinder und Filter
+  configNode(id: number, cfg: { outMask?: number; prio?: boolean; mask?: number }) {
+    const e = this.ents.get(id);
+    if (!e || e.kind !== 'building' || !NODE_TYPES.has(e.type)) return false;
+    if (cfg.outMask !== undefined) e.outMask = cfg.outMask & 7;
+    if (cfg.prio !== undefined) e.prio = !!cfg.prio;
+    if (cfg.mask !== undefined && e.type === 'filter') e.filter = cfg.mask & 1023;
+    this.structVersion++;
+    return true;
   }
 
   // ---------------------------------------------------------------- Kopieren & Einfügen
@@ -628,7 +680,7 @@ export class Sim {
       maxY = Math.max(maxY, e.y - minY + h);
       return e.kind === 'belt'
         ? { belt: true, dx: e.x - minX, dy: e.y - minY, dir: e.dir, tier: e.tier }
-        : { belt: false, type: e.type, dx: e.x - minX, dy: e.y - minY, dir: e.dir, level: e.level, filter: e.filter };
+        : { belt: false, type: e.type, dx: e.x - minX, dy: e.y - minY, dir: e.dir, level: e.level, filter: e.filter, outMask: e.outMask, prio: e.prio };
     });
     return { entries, w: maxX, h: maxY };
   }
@@ -637,9 +689,7 @@ export class Sim {
     let c = 0;
     for (const e of bp.entries) {
       if (e.belt) { c += BELT_TIERS[e.tier || 0].price; continue; }
-      const def = BUILDINGS[e.type!];
-      c += def.price;
-      for (let l = 1; l < (e.level || 1); l++) c += upgradeCost(def, l);
+      c += buildCost(e.type!, e.level || 1);
     }
     return c;
   }
@@ -663,7 +713,7 @@ export class Sim {
     if (this.money < cost || !this.blueprintValid(bp, ox, oy)) return false;
     for (const e of bp.entries) {
       if (e.belt) this.placeBelt(ox + e.dx, oy + e.dy, e.dir, e.tier || 0);
-      else this.place(e.type!, ox + e.dx, oy + e.dy, e.dir, { level: e.level, filter: e.filter });
+      else this.place(e.type!, ox + e.dx, oy + e.dy, e.dir, { level: e.level, filter: e.filter, outMask: e.outMask, prio: e.prio });
     }
     return true;
   }
@@ -708,7 +758,8 @@ export class Sim {
         const e = this.entAt(fx, fy);
         if (!e) return false;
         if (e.kind === 'belt') return e.dir === moveDir;
-        if (!hasOutput(e.type) && !['splitter', 'filter'].includes(e.type)) return false;
+        if (NODE_TYPES.has(e.type)) return e.x + DX[moveDir] === b.x && e.y + DY[moveDir] === b.y;
+        if (!hasOutput(e.type)) return false;
         const [ox, oy] = outputCell(e);
         return ox === b.x && oy === b.y && e.dir === moveDir;
       };
@@ -759,6 +810,22 @@ export class Sim {
     const tier = BELT_TIERS[b.tier];
     if (b.items.length >= tier.cap) return false;
     const spacing = 1 / tier.cap;
+    const rel = (moveDir - b.dir + 4) % 4;
+    if (rel !== 0 && rel !== b.curve) {
+      // Von der Seite: in der Mitte einfädeln – nur wenn dort eine Lücke ist (Hauptband hat Vorfahrt)
+      const at = 0.5;
+      let idx = b.items.length;
+      for (let k = 0; k < b.items.length; k++) {
+        const q = b.items[k].p;
+        if (Math.abs(q - at) < spacing) return false;
+        if (q < at && idx === b.items.length) idx = k;
+      }
+      it.p = at;
+      it.dp = 0;
+      it.o = rel === 1 ? -0.45 : 0.45;
+      b.items.splice(idx, 0, it);
+      return true;
+    }
     const last = b.items[b.items.length - 1];
     let p = Math.max(0, Math.min(p0, 0.999));
     if (last) {
@@ -796,13 +863,27 @@ export class Sim {
       }
       case 'logistic': {
         if (b.type === 'tunnelOut') return false;
-        if (b.type === 'merger') { if (moveDir === (b.dir + 2) % 4) return false; }
-        else if (moveDir !== b.dir) return false;
+        if (b.type !== 'crossing' && b.type !== 'merger' && moveDir !== b.dir) return false;
         if (b.type === 'tunnelIn') {
           if (!b.link || b.transit.length >= 6 * TUNNEL_RANGE) return false;
           const out = this.ents.get(b.link) as Building;
           const dist = Math.abs(out.x - b.x) + Math.abs(out.y - b.y);
           b.transit.push({ it, t: dist / 8 });
+          return true;
+        }
+        if (NODE_TYPES.has(b.type)) {
+          if (!this.nodeAccepts(b, moveDir)) return false;
+          const lane = b.lanes[(moveDir + 2) % 4];
+          const tier = BELT_TIERS[b.level - 1];
+          const spacing = 2 / tier.cap;
+          if (lane.length >= tier.cap) return false;
+          const last = lane[lane.length - 1];
+          let p = 0;
+          if (last) { if (last.p < spacing) return false; p = Math.min(p, last.p - spacing); }
+          it.p = p;
+          it.dp = 0;
+          it.o = 0;
+          lane.push(it);
           return true;
         }
         if (b.outBuf.length >= LOGISTIC_CAP) return false;
@@ -888,6 +969,7 @@ export class Sim {
       if (np < old) np = old;
       it.dp = np - old;
       it.p = np;
+      if (it.o) it.o = it.o > 0 ? Math.max(0, it.o - dv * 3) : Math.min(0, it.o + dv * 3);
       limit = np - spacing;
     }
   }
@@ -982,10 +1064,15 @@ export class Sim {
           b.status = !b.link ? 'blocked' : b.transit.length >= 6 * TUNNEL_RANGE ? 'blocked' : b.transit.length ? 'working' : 'idle';
           break;
         }
+        if (NODE_TYPES.has(b.type)) {
+          const r = this.tickNode(b);
+          worked = r.moved;
+          active = r.moved;
+          b.status = r.stuck ? 'blocked' : r.items ? 'working' : 'idle';
+          break;
+        }
         const n0 = b.outBuf.length;
-        if (b.type === 'splitter') this.splitOut(b, [b.dir, (b.dir + 1) % 4, (b.dir + 3) % 4], () => true);
-        else if (b.type === 'filter') this.filterOut(b);
-        else this.pushOut(b);
+        this.pushOut(b);
         worked = b.outBuf.length !== n0;
         b.status = b.outBuf.length >= LOGISTIC_CAP ? 'blocked' : b.outBuf.length || worked ? 'working' : 'idle';
         break;
@@ -995,31 +1082,121 @@ export class Sim {
     b.busy += ((active || worked ? 1 : 0) - b.busy) * 0.03;
   }
 
-  private splitOut(b: Building, dirs: number[], ok: (it: Item, d: number) => boolean) {
-    let fails = 0;
-    while (b.outBuf.length && fails < dirs.length) {
-      const d = dirs[b.rr % dirs.length];
-      b.rr++;
-      const it = b.outBuf[0];
-      if (ok(it, d) && this.pushInto(b.x + DX[d], b.y + DY[d], d, it, 0)) { b.outBuf.shift(); fails = 0; }
-      else fails++;
-    }
+  // ---------------------------------------------------------------- Knoten (Teiler, Verbinder, Filter, Kreuzung)
+  // Ein Knoten ist eine kleine Kreuzung aus Halb-Bändern: Einfahrt (Rand -> Mitte) und Ausfahrt (Mitte -> Rand).
+  nodeAccepts(b: Building, moveDir: number): boolean {
+    if (b.type === 'crossing') return true;
+    if (b.type === 'merger') return moveDir !== (b.dir + 2) % 4;
+    return moveDir === b.dir;
   }
 
-  private filterOut(b: Building) {
-    // Passender Zustand geradeaus, alles andere abwechselnd rechts/links
-    let guard = 0;
-    while (b.outBuf.length && guard++ < 64) {
-      const it = b.outBuf[0];
-      if (it.s === b.filter) {
-        if (!this.pushInto(b.x + DX[b.dir], b.y + DY[b.dir], b.dir, it, 0)) break;
-      } else {
-        const d1 = (b.dir + 1 + (b.rr % 2) * 2) % 4, d2 = (d1 + 2) % 4;
-        b.rr++;
-        if (!this.pushInto(b.x + DX[d1], b.y + DY[d1], d1, it, 0) && !this.pushInto(b.x + DX[d2], b.y + DY[d2], d2, it, 0)) break;
-      }
-      b.outBuf.shift();
+  // Kann in Richtung d etwas abgegeben werden? (Ziel vorhanden und nicht frontal)
+  private nodeTarget(b: Building, d: number): boolean {
+    const e = this.entAt(b.x + DX[d], b.y + DY[d]);
+    if (!e) return false;
+    if (e.kind === 'belt') return e.dir !== (d + 2) % 4;
+    return true;
+  }
+
+  private laneFree(b: Building, d: number, spacing: number): boolean {
+    const lane = b.lanes[4 + d];
+    const last = lane[lane.length - 1];
+    return lane.length < BELT_TIERS[b.level - 1].cap && (!last || last.p >= spacing);
+  }
+
+  // Wohin fährt eine Banane, die von Seite `side` die Mitte erreicht?
+  private nodeExit(b: Building, it: Item, side: number, spacing: number): number {
+    const free = (d: number) => this.nodeTarget(b, d) && this.laneFree(b, d, spacing);
+    if (b.type === 'crossing') { const d = (side + 2) % 4; return free(d) ? d : -1; }
+    if (b.type === 'merger') return free(b.dir) ? b.dir : -1;
+    const outs = [b.dir, (b.dir + 1) % 4, (b.dir + 3) % 4]; // vorne, rechts, links
+    let allowed = outs.filter((_, i) => b.outMask & (1 << i));
+    if (b.type === 'filter') {
+      const match = (b.filter >> it.s) & 1;
+      allowed = match ? allowed.filter((d) => d === b.dir) : allowed.filter((d) => d !== b.dir);
     }
+    allowed = allowed.filter((d) => this.nodeTarget(b, d));
+    if (!allowed.length) return -1;
+    if (b.prio) {
+      // Vorfahrt: der erste freie Ausgang in fester Reihenfolge
+      for (const d of allowed) if (this.laneFree(b, d, spacing)) return d;
+      return -1;
+    }
+    // Gleichmäßig: reihum – ist ein Ausgang voll, bekommt der nächste die Banane
+    for (let k = 0; k < allowed.length; k++) {
+      const d = allowed[(b.rr + k) % allowed.length];
+      if (this.laneFree(b, d, spacing)) { b.rr = (b.rr + k + 1) % allowed.length; return d; }
+    }
+    return -1;
+  }
+
+  private tickNode(b: Building): { moved: boolean; stuck: boolean; items: number } {
+    const tier = BELT_TIERS[b.level - 1];
+    const dv = tier.speed * DT * 2; // Halb-Band = halbe Feldlänge
+    const spacing = 2 / tier.cap;
+    let moved = false, stuck = false;
+    // 1) Ausfahrten: vorne raus ins nächste Feld
+    for (let d = 0; d < 4; d++) {
+      const lane = b.lanes[4 + d];
+      let k = 0;
+      while (k < lane.length && lane[k].p + dv >= 1) {
+        if (!b.enabled || !this.pushInto(b.x + DX[d], b.y + DY[d], d, lane[k], (lane[k].p + dv - 1) / 2)) break;
+        k++;
+        moved = true;
+      }
+      if (k) lane.splice(0, k);
+      let limit = 1;
+      for (const it of lane) {
+        const old = it.p;
+        const np = Math.max(old, Math.min(old + (b.enabled ? dv : 0), limit));
+        it.dp = (np - old) / 2;
+        it.p = np;
+        limit = np - spacing;
+      }
+      if (lane.length && lane[0].p >= 1) stuck = true;
+    }
+    // 2) Mitte: Einfahrten an Ausfahrten übergeben (Verbinder: fair reihum, mit Vorfahrt: hinten zuerst)
+    if (b.enabled) {
+      const back = (b.dir + 2) % 4;
+      const order = b.prio && b.type === 'merger'
+        ? [back, (b.dir + 3) % 4, (b.dir + 1) % 4]
+        : [0, 1, 2, 3].map((k) => (b.rr2 + k) % 4);
+      let guard = 0;
+      let progress = true;
+      while (progress && guard++ < 64) {
+        progress = false;
+        for (const side of order) {
+          const lane = b.lanes[side];
+          if (!lane.length || lane[0].p < 1) continue;
+          const d = this.nodeExit(b, lane[0], side, spacing);
+          if (d < 0) { stuck = true; continue; }
+          const it = lane.shift()!;
+          it.p = 0;
+          it.dp = 0;
+          b.lanes[4 + d].push(it);
+          moved = true;
+          progress = true;
+          if (!b.prio || b.type !== 'merger') b.rr2 = (side + 1) % 4;
+          if (b.type === 'merger' && b.prio) break; // nach jeder Übergabe wieder hinten beginnen
+        }
+      }
+    }
+    // 3) Einfahrten nachrücken (bis zur Mitte)
+    let items = 0;
+    for (let side = 0; side < 8; side++) {
+      const lane = b.lanes[side];
+      items += lane.length;
+      if (side >= 4) continue;
+      let limit = 1;
+      for (const it of lane) {
+        const old = it.p;
+        const np = Math.max(old, Math.min(old + (b.enabled ? dv : 0), limit));
+        it.dp = (np - old) / 2;
+        it.p = np;
+        limit = np - spacing;
+      }
+    }
+    return { moved, stuck: stuck && !moved, items };
   }
 
   // ---------------------------------------------------------------- Arbeitsradius der Sammler
@@ -1116,14 +1293,16 @@ export class Sim {
   serialize(): SaveData {
     const pile: number[] = [];
     for (let i = 0; i < this.pile.length; i++) if (this.pile[i]) pile.push(i, this.pile[i]);
-    const enc = (list: Item[]) => list.flatMap((it) => [it.s, +it.q.toFixed(6), +it.p.toFixed(4)]);
+    // volle Genauigkeit – sonst rechnen geladene Fabriken minimal anders weiter
+    const enc = (list: Item[]) => list.flatMap((it) => [it.s, it.q, it.p]);
     const ents: SavedEnt[] = [];
     for (const e of this.ents.values()) {
       if (e.kind === 'belt') ents.push({ k: 'belt', id: e.id, x: e.x, y: e.y, dir: e.dir, tier: e.tier, inv: e.invested, items: enc(e.items) });
       else ents.push({
         k: 'b', id: e.id, type: e.type, x: e.x, y: e.y, dir: e.dir, level: e.level, inv: e.invested, en: e.enabled,
         inBuf: enc(e.inBuf), outBuf: enc(e.outBuf), pr: e.progress, f: e.filter, rr: e.rr, bu: e.bucket, n: e.processed,
-        tr: e.transit.flatMap((t) => [t.it.s, +t.it.q.toFixed(6), +t.t.toFixed(3)]),
+        fm: 1, rr2: e.rr2, om: e.outMask, pi: e.prio ? 1 : 0, ln: e.lanes.length ? e.lanes.map(enc) : undefined,
+        tr: e.transit.flatMap((t) => [t.it.s, t.it.q, t.t]),
       });
     }
     return {
@@ -1168,8 +1347,14 @@ export class Sim {
         b.inBuf = dec(s.inBuf);
         b.outBuf = dec(s.outBuf);
         b.progress = s.pr;
-        b.filter = s.f;
+        // Ältere Spielstände: Filter war ein einzelner Zustand, Knoten hatten einen Puffer
+        b.filter = s.fm ? s.f : 1 << (s.f || 0);
         b.rr = s.rr;
+        b.rr2 = s.rr2 || 0;
+        b.outMask = s.om ?? 7;
+        b.prio = !!s.pi;
+        if (s.ln && b.lanes.length) b.lanes = s.ln.map(dec);
+        if (NODE_TYPES.has(b.type) && !s.ln && b.outBuf.length) { sim.salvage.push(...b.outBuf); b.outBuf = []; }
         b.bucket = s.bu;
         b.processed = s.n || 0;
         for (let k = 0; k < s.tr.length; k += 3) b.transit.push({ it: { s: s.tr[k], q: s.tr[k + 1], p: 0, dp: 0 }, t: s.tr[k + 2] });
@@ -1208,6 +1393,7 @@ export type SavedEnt =
   | {
     k: 'b'; id: number; type: string; x: number; y: number; dir: number; level: number; inv: number; en: boolean;
     inBuf: number[]; outBuf: number[]; pr: number; f: number; rr: number; bu: number; n: number; tr: number[];
+    fm?: number; rr2?: number; om?: number; pi?: number; ln?: number[][];
   };
 
 export interface SaveData {

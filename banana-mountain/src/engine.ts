@@ -628,6 +628,7 @@ export class Engine {
     return true;
   }
   setFilter(id: number, stage: number) { this.run({ k: 'filter', id, stage }); }
+  nodeCfg(id: number, cfg: { outMask?: number; prio?: boolean; mask?: number }) { this.run({ k: 'nodeCfg', id, ...cfg }); }
   upgradeOne(id: number) {
     const c = this.sim.upgradePrice(id);
     if (c === null || this.sim.money < c) { this.toast('Nicht genug Geld.', 'bad'); return false; }

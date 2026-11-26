@@ -16,6 +16,7 @@ export type Cmd =
   | { k: 'upgrade'; ids: number[] }
   | { k: 'toggle'; ids: number[] }
   | { k: 'filter'; id: number; stage: number }
+  | { k: 'nodeCfg'; id: number; outMask?: number; prio?: boolean; mask?: number }
   | { k: 'paste'; bp: Blueprint; x: number; y: number }
   | { k: 'salvage' }
   | { k: 'take'; tile: number }
@@ -38,6 +39,8 @@ export function validCmd(c: unknown): c is Cmd {
     case 'rotate': return int(o.id, 1, 1e9);
     case 'move': return int(o.id, 1, 1e9) && int(o.x, -10, 500) && int(o.y, -10, 500) && int(o.dir, 0, 3);
     case 'filter': return int(o.id, 1, 1e9) && int(o.stage, 0, STAGES.length - 1);
+    case 'nodeCfg': return int(o.id, 1, 1e9) && (o.outMask === undefined || int(o.outMask, 0, 7))
+      && (o.prio === undefined || typeof o.prio === 'boolean') && (o.mask === undefined || int(o.mask, 0, 1023));
     case 'paste': {
       const bp = o.bp as Blueprint | undefined;
       return !!bp && Array.isArray(bp.entries) && bp.entries.length <= 5000 && int(o.x, -10, 500) && int(o.y, -10, 500)
@@ -63,6 +66,7 @@ export function applyCmd(sim: Sim, pid: string, c: Cmd): boolean {
     case 'upgrade': { let n = 0; for (const id of c.ids) if (sim.upgrade(id)) n++; return n > 0; }
     case 'toggle': for (const id of c.ids) sim.toggle(id); return true;
     case 'filter': sim.setFilter(c.id, c.stage); return true;
+    case 'nodeCfg': return sim.configNode(c.id, c);
     case 'paste': return sim.paste(c.bp, c.x, c.y);
     case 'salvage': return sim.sellSalvage() > 0;
     case 'take': return sim.manualTake(c.tile, pid) > 0;

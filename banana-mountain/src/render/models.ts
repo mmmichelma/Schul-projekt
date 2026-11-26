@@ -4,7 +4,7 @@
  * Mittelpunkt der Grundfläche liegt im Ursprung.
  */
 import * as THREE from 'three';
-import { BUILDINGS, STAGES } from '../sim/defs';
+import { BUILDINGS, STAGES, BELT_TIERS } from '../sim/defs';
 import type { Status } from '../sim/sim';
 import { bananaGeometry, gearGeometry, hazardTexture, dripTexture, labelTexture, canvasTexture } from './assets';
 
@@ -15,7 +15,10 @@ export interface ModelCtx {
   speed: number;
   fill: number;        // 0..1 Füllstand (Lager)
   target: { x: number; z: number } | null; // lokale Richtung zum Ziel (Sammler)
-  filterStage: number;
+  filterStage: number;   // Filter: Bitmaske der Zustände
+  outMask?: number;      // Teiler/Filter: aktive Ausgänge (1 vorne, 2 rechts, 4 links)
+  tier?: number;         // Knoten: Band-Stufe
+  prio?: boolean;
 }
 
 export interface Model {
@@ -861,55 +864,111 @@ function arrow(p: THREE.Object3D, mat: THREE.Material, x: number, z: number, yaw
   return a;
 }
 
+// ---------------------------------------------------------------- Knoten: kleine Band-Kreuzungen
+// Lokale Richtungen: 0 = vorne (+x), 1 = rechts (+z), 2 = hinten (−x), 3 = links (−z)
+const NODE_ARROW = new THREE.ConeGeometry(0.075, 0.17, 3).rotateZ(-Math.PI / 2);
+const ARROW_ON = new THREE.MeshBasicMaterial({ color: '#46ff7a' });
+const ARROW_IN = new THREE.MeshBasicMaterial({ color: '#7fc8ff' });
+const ARROW_OFF = new THREE.MeshBasicMaterial({ color: '#4a4f57' });
+const ARROW_PRIO = new THREE.MeshBasicMaterial({ color: '#ffd21f' });
+
+function edgeArrow(p: THREE.Object3D, k: number, outward: boolean, mat: THREE.Material) {
+  const yaw = -k * Math.PI / 2 + (outward ? 0 : Math.PI);
+  const r = outward ? 0.4 : 0.36;
+  const a = new THREE.Mesh(NODE_ARROW, mat);
+  a.position.set(Math.cos(-k * Math.PI / 2) * r, 0.26, -Math.sin(-k * Math.PI / 2) * r);
+  a.rotation.y = yaw;
+  p.add(a);
+  return a;
+}
+
+function nodeDeck(d: THREE.Group) {
+  const m = mats();
+  basePlate(d, 1, 1);
+  box(d, 0.94, 0.07, 0.6, m.rubber, 0, 0.2, 0);
+  box(d, 0.6, 0.07, 0.94, m.rubber, 0, 0.2, 0);
+  for (const [x, z] of [[-0.39, -0.39], [0.39, -0.39], [-0.39, 0.39], [0.39, 0.39]]) box(d, 0.16, 0.12, 0.16, m.dark, x, 0.22, z);
+  const ringMat = std(BELT_TIERS[0].color, 0.4, 0.5);
+  add(d, new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.022, 6, 32).rotateX(Math.PI / 2), ringMat), 0, 0.24, 0);
+  let lastTier = 0;
+  return (tier = 0) => {
+    if (tier === lastTier) return;
+    lastTier = tier;
+    ringMat.color.set(BELT_TIERS[tier].color);
+    ringMat.emissive.set(tier === 4 ? BELT_TIERS[tier].color : '#000000');
+  };
+}
+
 function buildSplitter(type: string): Model {
   const m = mats();
   const d = new THREE.Group();
-  basePlate(d, 1, 1);
-  box(d, 0.8, 0.14, 0.8, m.panel, 0, 0.21, 0);
-  const disc = cyl(d, 0.28, 0.28, 0.06, m.orange, 0, 0.3, 0, 16);
-  box(disc, 0.5, 0.04, 0.08, m.dark, 0, 0.04, 0);
-  arrow(d, m.green, 0.33, 0, 0);
-  arrow(d, m.green, 0, 0.33, -Math.PI / 2);
-  arrow(d, m.green, 0, -0.33, Math.PI / 2);
-  const lamp = lampAt(d, -0.35, 0.55, -0.35);
-  return finish(type, d, lamp, 0.4, (c) => { disc.rotation.y += c.dt * (c.status === 'working' ? 8 : 0); });
+  const setTier = nodeDeck(d);
+  const disc = cyl(d, 0.13, 0.13, 0.03, m.orange, 0, 0.245, 0, 16);
+  box(disc, 0.26, 0.035, 0.05, m.dark, 0, 0.02, 0);
+  edgeArrow(d, 2, false, ARROW_IN);
+  const outs = [edgeArrow(d, 0, true, ARROW_ON), edgeArrow(d, 1, true, ARROW_ON), edgeArrow(d, 3, true, ARROW_ON)];
+  const lamp = lampAt(d, -0.39, 0.55, -0.39);
+  return finish(type, d, lamp, 0.4, (c) => {
+    setTier(c.tier);
+    const mask = c.outMask ?? 7;
+    outs.forEach((a, i) => { a.material = !(mask & (1 << i)) ? ARROW_OFF : c.prio && i === 0 ? ARROW_PRIO : ARROW_ON; });
+    disc.rotation.y += c.dt * (c.status === 'working' ? 9 : 0);
+  });
 }
 
 function buildMerger(type: string): Model {
   const m = mats();
   const d = new THREE.Group();
-  basePlate(d, 1, 1);
-  box(d, 0.8, 0.14, 0.8, m.panel, 0, 0.21, 0);
-  arrow(d, m.orange, 0.33, 0, 0);
-  arrow(d, m.green, -0.3, 0, 0);
-  arrow(d, m.green, 0, 0.3, Math.PI / 2);
-  arrow(d, m.green, 0, -0.3, -Math.PI / 2);
-  const funnel = cyl(d, 0.22, 0.1, 0.15, m.steel, 0, 0.35, 0, 12);
-  const lamp = lampAt(d, -0.35, 0.55, -0.35);
-  return finish(type, d, lamp, 0.4, (c) => { funnel.rotation.y += c.dt * (c.status === 'working' ? 5 : 0); });
+  const setTier = nodeDeck(d);
+  const funnel = cyl(d, 0.15, 0.08, 0.06, m.steel, 0, 0.26, 0, 12);
+  const ins = [edgeArrow(d, 2, false, ARROW_IN), edgeArrow(d, 1, false, ARROW_IN), edgeArrow(d, 3, false, ARROW_IN)];
+  edgeArrow(d, 0, true, ARROW_ON);
+  const lamp = lampAt(d, 0.39, 0.55, -0.39);
+  return finish(type, d, lamp, 0.4, (c) => {
+    setTier(c.tier);
+    ins[0].material = c.prio ? ARROW_PRIO : ARROW_IN;
+    funnel.rotation.y += c.dt * (c.status === 'working' ? 5 : 0);
+  });
 }
 
 function buildFilter(type: string): Model {
   const m = mats();
   const d = new THREE.Group();
-  basePlate(d, 1, 1);
-  box(d, 0.8, 0.14, 0.8, m.panel, 0, 0.21, 0);
-  const panelMat = std('#ffd21f', 0.4, 0, { emissive: '#ffd21f', emissiveIntensity: 0.5 });
-  const sign = box(d, 0.5, 0.35, 0.06, panelMat, -0.15, 0.55, 0);
-  sign.rotation.y = Math.PI / 2;
-  arrow(d, panelMat, 0.33, 0, 0);
-  arrow(d, m.dark, 0, 0.33, -Math.PI / 2);
-  arrow(d, m.dark, 0, -0.33, Math.PI / 2);
-  const lamp = lampAt(d, -0.35, 0.8, -0.35);
+  const setTier = nodeDeck(d);
+  edgeArrow(d, 2, false, ARROW_IN);
+  const outs = [edgeArrow(d, 0, true, ARROW_PRIO), edgeArrow(d, 1, true, ARROW_ON), edgeArrow(d, 3, true, ARROW_ON)];
+  // Schild mit den Farben der durchgelassenen Zustände
+  const sign = group(d, -0.39, 0.3, 0.39);
+  cyl(sign, 0.02, 0.02, 0.5, m.dark, 0, 0.25, 0, 6);
+  box(sign, 0.06, 0.24, 0.34, m.darker, 0, 0.55, 0);
+  const swatches = STAGES.map((st, i) => {
+    const sw = box(sign, 0.07, 0.04, 0.05, std(st.color, 0.4, 0, { emissive: st.color, emissiveIntensity: 0.6 }), 0.01, 0.46 + Math.floor(i / 5) * 0.08, -0.12 + (i % 5) * 0.06);
+    sw.castShadow = false;
+    return sw;
+  });
+  const lamp = lampAt(d, 0.39, 0.55, -0.39);
   let last = -1;
   return finish(type, d, lamp, 0.6, (c) => {
+    setTier(c.tier);
+    const mask = c.outMask ?? 7;
+    outs.forEach((a, i) => { a.material = !(mask & (1 << i)) ? ARROW_OFF : i === 0 ? ARROW_PRIO : ARROW_ON; });
     if (c.filterStage !== last) {
       last = c.filterStage;
-      const col = STAGES[c.filterStage] ? STAGES[c.filterStage].color : '#ffffff';
-      panelMat.color.set(col);
-      panelMat.emissive.set(col);
+      swatches.forEach((sw, i) => { sw.visible = !!((c.filterStage >> i) & 1); });
     }
   });
+}
+
+function buildCrossing(type: string): Model {
+  const m = mats();
+  const d = new THREE.Group();
+  const setTier = nodeDeck(d);
+  // kleine Brücke über der Kreuzung
+  for (const z of [-0.33, 0.33]) box(d, 0.05, 0.22, 0.05, m.yellow, 0, 0.33, z);
+  box(d, 0.05, 0.05, 0.72, m.yellow, 0, 0.45, 0);
+  for (let k = 0; k < 4; k++) edgeArrow(d, k, true, ARROW_ON);
+  const lamp = lampAt(d, -0.39, 0.55, -0.39);
+  return finish(type, d, lamp, 0.5, (c) => { setTier(c.tier); });
 }
 
 function buildTunnel(type: string, entrance: boolean): Model {
@@ -934,7 +993,7 @@ const BUILDERS: Record<string, (type: string) => Model> = {
   glaze: buildGlaze, refine: buildRefine, pack: buildPack, premium: buildPremium,
   sell1: buildSell1, sell2: buildSell2, sell3: buildSell3, sell4: buildSell4,
   buffer: buildBuffer, storage: buildStorage, silo: buildSilo,
-  splitter: buildSplitter, merger: buildMerger, filter: buildFilter,
+  splitter: buildSplitter, merger: buildMerger, filter: buildFilter, crossing: buildCrossing,
   tunnelIn: (t) => buildTunnel(t, true), tunnelOut: (t) => buildTunnel(t, false),
 };
 
@@ -955,7 +1014,7 @@ export function createGhost(type: string): { group: THREE.Group; setValid: (ok: 
     if ((o as THREE.Light).isLight) o.visible = false;
   });
   meshes.forEach((mm) => { mm.material = ghostOk; });
-  model.update({ t: 0, dt: 0, status: 'idle', speed: 1, fill: 0, target: null, filterStage: 1 });
+  model.update({ t: 0, dt: 0, status: 'idle', speed: 1, fill: 0, target: null, filterStage: 2 });
   return {
     group: model.group,
     setValid: (ok) => meshes.forEach((mm) => { mm.material = ok ? ghostOk : ghostBad; }),
