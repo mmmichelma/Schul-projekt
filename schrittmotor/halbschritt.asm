@@ -3,7 +3,7 @@
 ;
 ;  C0 -> T1 -> S1 -> Hauptschalter   (gedrueckt = Motor laeuft)
 ;  C1 -> T2 -> S2 -> Rechtsbetrieb   (gedrueckt = rechts, sonst links)
-;  PortB (Bit 0..3) -> Motor (z.B. ueber ULN2003)
+;  PortB (Bit 0..3) -> Motor (ueber L293D)
 ;  PortD (Bit 0..1) -> LEDs: zeigen S1 / S2 an
 ;
 ;  Controller: ATmega8, 1 MHz  (AVR-Werkstatt)
