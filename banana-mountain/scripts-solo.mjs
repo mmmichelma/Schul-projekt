@@ -20,3 +20,15 @@ const out = [
 ].join('\n');
 fs.writeFileSync('banana-mountain-solo.html', out);
 console.log('banana-mountain-solo.html', (out.length / 1024 / 1024).toFixed(2), 'MB');
+
+// Gleiche Datei auch für die Android-App (mit vollständigem HTML-Gerüst)
+const androidAssets = path.join('android', 'app', 'src', 'main', 'assets');
+if (fs.existsSync(path.join('android', 'app'))) {
+  fs.mkdirSync(androidAssets, { recursive: true });
+  const page = '<!doctype html><html lang="de"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">'
+    + '<style>html,body{margin:0;height:100%;background:#1b1f27;overflow:hidden}</style></head><body>'
+    + out + '</body></html>';
+  fs.writeFileSync(path.join(androidAssets, 'index.html'), page);
+  console.log('android/app/src/main/assets/index.html geschrieben');
+}

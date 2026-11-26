@@ -64,6 +64,17 @@ der anderen und eine Bestenliste. Server ist ein Supabase-Projekt (Datenbank + R
 | Linie kopieren / einfügen | Strg+C / Strg+V | Knopf „Kopieren“ |
 | Banane nehmen | Klick auf Berg / Leertaste | Tippen |
 
+## Android-App (APK)
+
+```bash
+cd banana-mountain
+npm run apk        # baut die Solo-Version und daraus die APK -> banana-mountain.apk
+```
+Dafür braucht man das Android SDK (`ANDROID_HOME`), Java 17+ und Gradle.
+Die App enthält das komplette Spiel (Solo-Modus) und läuft ohne Internet. Der Spielstand bleibt auf dem Handy.
+
+**Installieren:** Die APK aufs Handy kopieren, antippen und „Installation aus unbekannten Quellen“ erlauben.
+
 ## Technik
 
 * **React + TypeScript + Vite**, **three.js** für die 3D-Grafik (WebGL)

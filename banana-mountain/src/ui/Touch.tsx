@@ -37,7 +37,9 @@ export function TouchControls({ engine }: { engine: Engine }) {
         <i style={{ transform: `translate(${knob.x * 38}px, ${knob.y * 38}px)` }} />
       </div>
       <div className="touch-btns">
-        <button onPointerDown={() => engine.grabNear()}>Greifen</button>
+        {engine.stationNear && engine.myManual().slots.length
+          ? <button className="sell" onPointerDown={() => engine.manualSellAll()}>Verkaufen</button>
+          : <button onPointerDown={() => engine.grabNear()}>Greifen</button>}
         <button onPointerDown={() => engine.jump()}>Springen</button>
       </div>
     </>

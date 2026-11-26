@@ -11,6 +11,10 @@ import { createModel, createGhost, Model, LAMP_MATS } from './models';
 import { floorTexture, wallTexture, hazardTexture, canvasTexture } from './assets';
 import { Character, nameSprite } from './character';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 export interface Quality {
   name: string;
@@ -49,7 +53,12 @@ export class GameRenderer {
   // Spielfigur (Laufen-Modus)
   player = new Character();
   playerVisible = false;
-  private tuning = { resScale: 1, lodScale: 1, shadows: 'auto' as 'auto' | 'on' | 'off', effects: true };
+  private tuning = { resScale: 1, lodScale: 1, shadows: 'auto' as 'auto' | 'on' | 'off', effects: true, ao: 'auto' as 'auto' | 'on' | 'off' };
+  // Umgebungsverdeckung (dunklere Ecken & Fugen) über Nachbearbeitung
+  private composer: EffectComposer | null = null;
+  private aoPass: GTAOPass | null = null;
+  private aoOn = false;
+  private size = { w: 1, h: 1 };
   sim: Sim;
   quality = QUALITIES[2];
   private sun: THREE.DirectionalLight;
@@ -241,6 +250,8 @@ export class GameRenderer {
     this.renderer.setPixelRatio(Math.max(0.4, Math.min(window.devicePixelRatio || 1, q.pixelRatio) * t.resScale));
     this.renderer.shadowMap.enabled = q.shadows;
     this.sun.castShadow = q.shadows;
+    this.aoOn = t.ao === 'on' || (t.ao === 'auto' && preset.shadowRes >= 2048);
+    if (this.composer) { this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(this.size.w, this.size.h); }
     if (this.sun.shadow.mapSize.x !== q.shadowRes) {
       this.sun.shadow.mapSize.set(q.shadowRes, q.shadowRes);
       this.sun.shadow.map?.dispose();
@@ -255,7 +266,24 @@ export class GameRenderer {
     });
   }
 
+  private ensureComposer() {
+    if (this.composer) return;
+    const c = new EffectComposer(this.renderer);
+    c.addPass(new RenderPass(this.scene, this.camera));
+    const ao = new GTAOPass(this.scene, this.camera, this.size.w, this.size.h);
+    ao.updateGtaoMaterial({ radius: 0.7, distanceExponent: 1.3, thickness: 1.2, scale: 1.1 });
+    ao.blendIntensity = 0.85;
+    c.addPass(ao);
+    c.addPass(new OutputPass());
+    c.setPixelRatio(this.renderer.getPixelRatio());
+    c.setSize(this.size.w, this.size.h);
+    this.composer = c;
+    this.aoPass = ao;
+  }
+
   resize(w: number, h: number) {
+    this.size = { w, h };
+    this.composer?.setSize(w, h);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
@@ -601,7 +629,12 @@ export class GameRenderer {
     this.fx.update(dt, this.cam.dist);
     this.updatePreview();
     this.updateSelectionVisuals();
-    this.renderer.render(this.scene, this.camera);
+    if (this.aoOn) {
+      this.ensureComposer();
+      this.composer!.render(dt);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   // Mitspieler: als laufende Figur (Laufen-Modus) oder als farbiger Ring (Bau-Ansicht)

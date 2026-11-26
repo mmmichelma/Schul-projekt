@@ -59,6 +59,7 @@ export function SettingsModal({ engine, onClose }: { engine: Engine; onClose: ()
           <div className="set-list">
             <Choice label="Qualität" value={s.quality} options={QUALITIES.map((q, i) => [i, q.name] as [number, string])} onChange={(v) => set({ quality: v })} />
             <Choice label="Schatten" value={s.shadows} options={[['auto', 'Wie Qualität'], ['on', 'An'], ['off', 'Aus']]} onChange={(v) => set({ shadows: v })} />
+            <Choice label="Plastische Schatten (AO)" value={s.ao} options={[['auto', 'Wie Qualität'], ['on', 'An'], ['off', 'Aus']]} onChange={(v) => set({ ao: v })} />
             <Slider label="Auflösung" value={s.resScale} min={0.5} max={1.5} step={0.05} fmt={pct} onChange={(v) => set({ resScale: v })} />
             <Slider label="Sichtweite (Details)" value={s.lodScale} min={0.5} max={2} step={0.1} fmt={pct} onChange={(v) => set({ lodScale: v })} />
             <Slider label="Sichtfeld" value={s.fov} min={32} max={75} step={1} fmt={(v) => v + '°'} onChange={(v) => set({ fov: v })} />

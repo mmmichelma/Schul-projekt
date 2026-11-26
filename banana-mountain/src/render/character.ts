@@ -21,7 +21,7 @@ const G = {
   upper: new THREE.CapsuleGeometry(0.058, 0.18, 6, 16),
   fore: new THREE.CapsuleGeometry(0.05, 0.17, 6, 16),
   hand: new THREE.SphereGeometry(0.06, 16, 12),
-  eye: new THREE.SphereGeometry(0.03, 10, 8),
+  eye: new THREE.SphereGeometry(0.03, 16, 12),
   stripe: rbox(0.36, 0.035, 0.37, 0.012),
   pack: rbox(0.22, 0.3, 0.3, 0.05),
 };
@@ -53,7 +53,7 @@ export class Character {
   private t = Math.random() * 10;
   private w = { walk: 0, air: 0, grab: 0 };
   private blink = 3;
-  private eyes: THREE.Mesh[] = [];
+  private eyes: THREE.Object3D[] = [];
   private held: THREE.Mesh;
   grabTimer = 0;
   onStep: (() => void) | null = null;
@@ -62,6 +62,7 @@ export class Character {
     const skin = std(look.skin, 0.55), shirt = std(look.shirt, 0.8), vest = std(look.vest, 0.6);
     const pants = std(look.pants, 0.85), boot = std('#3a2a1a', 0.7), helmet = std(look.helmet, 0.35, 0.1);
     const refl = std('#e8e8e8', 0.2, 0.6, { emissive: '#555555', emissiveIntensity: 0.4 });
+    const glove = std('#4b5563', 0.85);
     const J = this.J;
     const body = j(this.root);
     J.hips = j(body, 0, 0.74, 0);
@@ -74,6 +75,7 @@ export class Character {
       m(k, G.shin, pants, 0, -0.14, 0);
       const a = j(k, 0, -0.3, 0);
       m(a, G.boot, boot, 0.04, -0.03, 0);
+      m(a, rbox(0.25, 0.03, 0.14, 0.012), std('#1a1410', 0.9), 0.04, -0.085, 0);
       J['hip' + n] = h; J['knee' + n] = k; J['ankle' + n] = a;
     }
     J.spine = j(J.hips, 0, 0.05, 0);
@@ -88,19 +90,51 @@ export class Character {
     J.neck = j(J.spine, 0, 0.5, 0);
     J.head = j(J.neck, 0, 0.17, 0);
     m(J.head, G.head, skin);
-    m(J.head, G.helmet, helmet, 0, 0.03, 0);
-    m(J.head, G.brim, helmet, 0.05, 0.04, 0).scale.set(1.15, 1, 1);
+    m(J.head, G.helmet, helmet, 0, 0.075, 0);
+    m(J.head, G.brim, helmet, 0.05, 0.085, 0).scale.set(1.15, 1, 1);
     const dark = std('#1d1410', 0.3);
-    for (const z of [-0.07, 0.07]) { const e = m(J.head, G.eye, dark, 0.18, 0.02, z); e.castShadow = false; this.eyes.push(e); }
-    const mouth = m(J.head, new THREE.TorusGeometry(0.04, 0.008, 6, 12, Math.PI), std('#7a2a2a'), 0.19, -0.07, 0);
+    const white = std('#ffffff', 0.3);
+    for (const z of [-0.07, 0.07]) {
+      const eye = new THREE.Group();
+      eye.position.set(0.17, 0.01, z);
+      J.head.add(eye);
+      const w = m(eye, G.eye, white, 0, 0, 0);
+      w.scale.set(0.6, 1.25, 1.1);
+      w.castShadow = false;
+      const pu = m(eye, G.eye, dark, 0.016, -0.004, 0);
+      pu.scale.set(0.5, 0.75, 0.7);
+      pu.castShadow = false;
+      this.eyes.push(eye as unknown as THREE.Mesh);
+    }
+    const mouth = m(J.head, new THREE.TorusGeometry(0.04, 0.008, 8, 16, Math.PI), std('#7a2a2a'), 0.19, -0.07, 0);
     mouth.rotation.set(0, Math.PI / 2, Math.PI);
+    // Nase, Augenbrauen, Ohren, Wangen
+    m(J.head, new THREE.SphereGeometry(0.035, 16, 12), skin, 0.2, -0.02, 0).scale.set(1, 0.9, 0.8);
+    const brow = std('#4a3020', 0.8);
+    for (const z of [-0.07, 0.07]) {
+      const b = m(J.head, new THREE.CapsuleGeometry(0.01, 0.05, 4, 8), brow, 0.18, 0.06, z);
+      b.rotation.x = Math.PI / 2;
+      b.castShadow = false;
+      const ear = m(J.head, new THREE.SphereGeometry(0.045, 16, 12), skin, 0, -0.01, z * 2.85);
+      ear.scale.set(0.8, 1, 0.45);
+      const cheek = m(J.head, new THREE.SphereGeometry(0.03, 12, 8), std('#ff9a8a', 0.8, 0, { transparent: true, opacity: 0.45 }), 0.16, -0.05, z * 1.6);
+      cheek.scale.set(0.4, 0.7, 1);
+      cheek.castShadow = false;
+    }
+    // Gürtel mit Schnalle, Kragen
+    const belt = m(J.hips, new THREE.CylinderGeometry(0.155, 0.155, 0.06, 28), std('#2a1e14', 0.6), 0, 0.07, 0);
+    belt.scale.set(0.82, 1, 1.05);
+    m(J.hips, rbox(0.03, 0.06, 0.08, 0.01), std('#c9a227', 0.3, 0.8), 0.13, 0.07, 0);
+    const collar = m(J.spine, new THREE.TorusGeometry(0.1, 0.03, 10, 24), shirt, 0, 0.5, 0);
+    collar.rotation.x = Math.PI / 2;
     for (const [n, z] of [['L', -0.22], ['R', 0.22]] as const) {
       const sh = j(J.spine, 0, 0.42, z);
       m(sh, G.upper, shirt, 0, -0.11, 0);
       const el = j(sh, 0, -0.24, 0);
       m(el, G.fore, skin, 0, -0.1, 0);
       const wr = j(el, 0, -0.22, 0);
-      m(wr, G.hand, skin, 0, -0.03, 0);
+      m(wr, G.hand, glove, 0, -0.03, 0).scale.set(1, 1.1, 0.85);
+      m(wr, new THREE.CapsuleGeometry(0.022, 0.05, 4, 8), glove, 0.04, -0.03, 0).rotation.z = -0.6; // Daumen
       J['sh' + n] = sh; J['el' + n] = el; J['wr' + n] = wr;
     }
     if (!heldGeo) heldGeo = bananaGeometry({ len: 0.5, radius: 0.07, bend: 0.12, seg: 12 });

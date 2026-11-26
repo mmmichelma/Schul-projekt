@@ -7,7 +7,9 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "test": "vitest run"
+    "test": "vitest run",
+    "solo": "vite build -c vite.solo.config.ts && node scripts-solo.mjs",
+    "apk": "npm run solo && cd android && gradle assembleRelease && cp app/build/outputs/apk/release/app-release.apk ../banana-mountain.apk"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.2",

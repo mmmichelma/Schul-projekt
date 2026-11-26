@@ -247,7 +247,8 @@ export class Sim {
   static newGame(): Sim {
     const sim = new Sim();
     // Kostenlose Verkaufsstation unterhalb des Berges
-    sim.place('sell1', PILE_CX - 1, PILE_CY + PILE_R + 6, 3, { free: true });
+    // Die Bananen-Base: hier wird verkauft
+    sim.place('base', PILE_CX - 2, PILE_CY + PILE_R + 6, 0, { free: true });
     sim.stats.built = 0;
     return sim;
   }
@@ -354,11 +355,16 @@ export class Sim {
         peeled++;
       }
     }
-    if (m.up.autosell) this.sellPeeledManual(pid);
     return peeled;
   }
 
-  private sellManualAt(m: Manual, i: number, pid: string) {
+  // Ist `id` eine Verkaufsstation (Base, Verkaufsstand …)?
+  isSellStation(id: number): boolean {
+    const e = this.ents.get(id);
+    return !!e && e.kind === 'building' && BUILDINGS[e.type].category === 'sell' && e.enabled;
+  }
+
+  private sellManualAt(m: Manual, i: number, pid: string, station: number) {
     const b = m.slots[i];
     const peeled = b.mask === 7;
     const value = peeled ? STAGES[1].value : STAGES[0].value;
@@ -366,22 +372,26 @@ export class Sim {
     if (peeled) this.stats.manualPeeledSold++; else this.stats.manualRawSold++;
     this.registerSale(value);
     this.events.push({ t: 'manualSell', value, pid });
+    this.events.push({ t: 'sell', id: station, value });
   }
 
-  sellPeeledManual(pid = LOCAL): number {
+  // Verkaufen geht nur an einer Verkaufsstation
+  sellPeeledManual(pid: string, station: number): number {
+    if (!this.isSellStation(station)) return 0;
     const m = this.manualOf(pid);
     let n = 0;
     for (let i = m.slots.length - 1; i >= 0; i--) {
-      if (m.slots[i].mask === 7) { this.sellManualAt(m, i, pid); n++; }
+      if (m.slots[i].mask === 7) { this.sellManualAt(m, i, pid, station); n++; }
     }
     return n;
   }
 
-  // Verkauft alles aus dem Handbereich (geschält 3 $, roh 1 $)
-  manualSellAll(pid = LOCAL): number {
+  // Verkauft alles aus den Händen an einer Verkaufsstation (geschält 3 $, roh 1 $)
+  manualSellAll(pid: string, station: number): number {
+    if (!this.isSellStation(station)) return 0;
     const m = this.manualOf(pid);
     const n = m.slots.length;
-    for (let i = n - 1; i >= 0; i--) this.sellManualAt(m, i, pid);
+    for (let i = n - 1; i >= 0; i--) this.sellManualAt(m, i, pid, station);
     return n;
   }
 
@@ -425,7 +435,6 @@ export class Sim {
             for (let st = 0; st < 3; st++) if (!(b.mask & (1 << st))) { b.mask |= 1 << st; break; }
           }
         }
-        if (m.up.autosell) this.sellPeeledManual(pid);
       } else if (!m.slots.length) {
         m.peelAcc = 0;
       }
@@ -589,6 +598,7 @@ export class Sim {
   demolish(id: number): boolean {
     const e = this.ents.get(id);
     if (!e) return false;
+    if (e.kind === 'building' && BUILDINGS[e.type].fixed) return false; // die Base bleibt
     for (const it of this.collectItems(e)) { it.p = 0; it.dp = 0; this.salvage.push(it); }
     this.occupy(e, false);
     this.ents.delete(id);

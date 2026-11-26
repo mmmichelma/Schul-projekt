@@ -710,6 +710,138 @@ function stripeTex() {
   });
 }
 
+
+// ================================================================ Bananen-Base (Startgebäude, hier wird verkauft)
+let baseSignTex: THREE.Texture | null = null;
+let zoneTex: THREE.Texture | null = null;
+function buildBase(type: string): Model {
+  const m = mats();
+  const d = new THREE.Group();
+  const W = 4, D = 3;
+  const concrete = std('#b9bec6', 0.85);
+  const cream = std('#f4ead2', 0.8);
+  const roofMat = std('#f2b705', 0.45, 0.1);
+  const trim = std('#7a4a1c', 0.7);
+  // Fundament
+  box(d, W - 0.06, 0.16, D - 0.06, concrete, 0, 0.08, 0);
+  box(d, W - 0.06, 0.03, 0.08, m.hazard, 0, 0.17, D / 2 - 0.07);
+  // Haus hinten
+  const house = group(d, -0.15, 0.16, -0.55);
+  box(house, 3.2, 1.45, 1.6, cream, 0, 0.73, 0);
+  box(house, 3.24, 0.12, 1.64, trim, 0, 0.06, 0);
+  // Fenster mit warmem Licht
+  const glow = std('#ffe7a0', 0.4, 0, { emissive: '#ffb84a', emissiveIntensity: 0.9 });
+  for (const x of [-1.05, 1.05]) {
+    box(house, 0.55, 0.45, 0.04, glow, x, 0.85, 0.81);
+    box(house, 0.65, 0.06, 0.07, trim, x, 0.6, 0.82);
+    box(house, 0.05, 0.45, 0.06, trim, x, 0.85, 0.82);
+  }
+  // Tür an der Seite
+  box(house, 0.04, 1.0, 0.55, trim, 1.61, 0.55, 0.1);
+  sphere(house, 0.035, m.gold, 1.64, 0.55, 0.28);
+  // Satteldach
+  const roofL = box(house, 3.5, 0.1, 1.15, roofMat, 0, 1.72, -0.42);
+  roofL.rotation.x = 0.55;
+  const roofR = box(house, 3.5, 0.1, 1.15, roofMat, 0, 1.72, 0.42);
+  roofR.rotation.x = -0.55;
+  box(house, 3.55, 0.08, 0.1, trim, 0, 2.02, 0);
+  for (const x of [-1.6, 1.6]) {
+    const gable = add(house, new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.04, 3, 1), cream), x * 0.99, 1.47, 0);
+    gable.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+    gable.scale.set(1, 1, 0.62);
+  }
+  cyl(house, 0.12, 0.14, 0.5, std('#8a5a3c', 0.8), 1.0, 2.0, -0.35, 12);
+  // Schild auf dem Dach
+  if (!baseSignTex) {
+    baseSignTex = canvasTexture(512, 160, (ctx) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 160);
+      g.addColorStop(0, '#2a1f10'); g.addColorStop(1, '#14100a');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 160);
+      ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 8; ctx.strokeRect(6, 6, 500, 148);
+      ctx.fillStyle = '#ffd21f';
+      ctx.font = '900 64px Inter, Arial Black, Arial, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('BANANEN-BASE', 256, 72);
+      ctx.font = '700 26px Inter, Arial, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('ANKAUF  ·  VERKAUF', 256, 126);
+    }, false);
+  }
+  const signG = group(house, 0, 2.15, 0.15);
+  for (const x of [-1.2, 1.2]) cyl(signG, 0.035, 0.035, 0.5, m.dark, x, 0.25, 0, 8);
+  const sign = box(signG, 2.9, 0.9, 0.08, m.darker, 0, 0.85, 0);
+  void sign;
+  const face = add(signG, new THREE.Mesh(new THREE.PlaneGeometry(2.8, 0.85), std('#ffffff', 0.5, 0, { map: baseSignTex, emissive: '#ffffff', emissiveMap: baseSignTex, emissiveIntensity: 0.55 })), 0, 0.85, 0.045);
+  void face;
+  // Große Banane über dem Schild (dreht sich)
+  const bigBanana = new THREE.Mesh(bananaGeometry({ len: 1.1, radius: 0.15, bend: 0.3, seg: 18 }), std('#ffffff', 0.4, 0, { vertexColors: true, emissive: '#3a2a00', emissiveIntensity: 0.4 }));
+  bigBanana.castShadow = true;
+  const spin = group(signG, 0, 1.65, 0);
+  spin.add(bigBanana);
+  // Vordach mit Streifen und Pfosten
+  const aw = add(d, new THREE.Mesh(rbox(3.4, 0.06, 1.25, 0.02), std('#ffffff', 0.7, 0, { map: stripeTex() })), -0.1, 1.55, 0.72);
+  aw.rotation.x = 0.22;
+  for (const x of [-1.7, 1.5]) cyl(d, 0.05, 0.05, 1.35, trim, x, 0.84, 1.25, 10);
+  // Theke mit Kasse und Waage
+  const counter = group(d, -0.2, 0.16, 0.55);
+  box(counter, 2.4, 0.78, 0.5, std('#9a6a3c', 0.7), 0, 0.39, 0);
+  box(counter, 2.5, 0.07, 0.6, std('#d9c9a8', 0.5), 0, 0.81, 0);
+  for (let i = 0; i < 5; i++) box(counter, 0.04, 0.6, 0.02, trim, -1.0 + i * 0.5, 0.4, 0.26);
+  const reg = group(counter, 0.75, 0.85, 0);
+  box(reg, 0.38, 0.18, 0.3, m.dark, 0, 0.09, 0);
+  const drawer = box(reg, 0.34, 0.06, 0.28, m.steel, 0, 0.02, 0.06);
+  box(reg, 0.24, 0.13, 0.03, m.screen, 0, 0.25, -0.08).rotation.x = -0.3;
+  const scale = group(counter, -0.6, 0.85, 0);
+  cyl(scale, 0.12, 0.14, 0.12, m.white, 0, 0.06, 0, 16);
+  cyl(scale, 0.2, 0.2, 0.02, m.steel, 0, 0.14, 0, 20);
+  for (let i = 0; i < 3; i++) { const b = bananaMesh(0.9); b.position.set(-0.06 + i * 0.05, 0.18, 0); b.rotation.y = i * 0.8; scale.add(b); }
+  // Kisten voller Bananen
+  const crate = (x: number, z: number, rot: number, stacked = false) => {
+    const g = group(d, x, 0.16, z);
+    g.rotation.y = rot;
+    box(g, 0.55, 0.32, 0.4, std('#b5874e', 0.85), 0, 0.16, 0);
+    for (const yy of [0.08, 0.24]) box(g, 0.57, 0.04, 0.42, std('#8a5f30', 0.85), 0, yy, 0);
+    for (let i = 0; i < 4; i++) { const b = bananaMesh(0.85); b.position.set(-0.15 + i * 0.1, 0.36, (i % 2) * 0.08 - 0.04); b.rotation.y = i * 0.9; g.add(b); }
+    if (stacked) { const top = group(g, 0, 0.32, 0); box(top, 0.55, 0.32, 0.4, std('#b5874e', 0.85), 0, 0.16, 0); }
+    return g;
+  };
+  crate(1.55, 0.95, 0.2);
+  crate(1.55, 0.4, -0.15, true);
+  crate(-1.65, 0.3, 0.1);
+  // Laternen
+  const lampMat = std('#fff2c0', 0.3, 0, { emissive: '#ffcc66', emissiveIntensity: 1.6 });
+  for (const x of [-1.7, 1.5]) {
+    const l = sphere(d, 0.09, lampMat, x, 1.45, 1.25);
+    l.castShadow = false;
+  }
+  const light = new THREE.PointLight('#ffcf7a', 1.2, 5, 2);
+  light.position.set(0, 1.3, 1.1);
+  d.add(light);
+  // Verkaufszone vor der Theke
+  if (!zoneTex) {
+    zoneTex = canvasTexture(256, 128, (ctx) => {
+      ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.clearRect(0, 0, 256, 128);
+      ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 10; ctx.setLineDash([22, 14]);
+      ctx.strokeRect(8, 8, 240, 112);
+      ctx.fillStyle = '#ffd21f'; ctx.font = '900 40px Inter, Arial Black, Arial, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('VERKAUF', 128, 66);
+    }, false);
+  }
+  const zone = add(d, new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.MeshBasicMaterial({ map: zoneTex, transparent: true, depthWrite: false })), -0.2, 0.175, 2.05);
+  zone.rotation.x = -Math.PI / 2;
+  zone.castShadow = false;
+  zone.receiveShadow = false;
+  const lamp = lampAt(d, 1.8, 1.2, -1.3);
+  return finish(type, d, lamp, 2.6, (c) => {
+    const w = c.status === 'working';
+    spin.rotation.y += c.dt * (w ? 2.5 : 0.8);
+    spin.position.y = 1.65 + Math.sin(c.t * 2) * 0.06;
+    drawer.position.z = 0.06 + (w ? Math.max(0, Math.sin(c.t * 10)) * 0.12 : 0);
+    (zone.material as THREE.MeshBasicMaterial).opacity = 0.65 + Math.sin(c.t * 3) * 0.3;
+  });
+}
+
 function buildSell1(type: string): Model {
   const m = mats();
   const d = new THREE.Group();
@@ -1005,7 +1137,7 @@ const BUILDERS: Record<string, (type: string) => Model> = {
   grab1: buildGrab1, grab2: buildGrab2, vacuum: buildVacuum, robot: buildRobot, digger: buildDigger, mega: buildMega,
   peeler: buildPeeler, cutter: buildCutter, oven: buildOven, caramel: buildCaramel, choco: buildChoco,
   glaze: buildGlaze, refine: buildRefine, pack: buildPack, premium: buildPremium,
-  sell1: buildSell1, sell2: buildSell2, sell3: buildSell3, sell4: buildSell4,
+  base: buildBase, sell1: buildSell1, sell2: buildSell2, sell3: buildSell3, sell4: buildSell4,
   buffer: buildBuffer, storage: buildStorage, silo: buildSilo,
   splitter: buildSplitter, merger: buildMerger, filter: buildFilter, crossing: buildCrossing,
   tunnelIn: (t) => buildTunnel(t, true), tunnelOut: (t) => buildTunnel(t, false),

@@ -76,7 +76,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
   const hint = !m.slots.length
     ? 'Klicke auf den Bananenberg (oder hier), um eine Banane zu nehmen.'
     : peeled === m.slots.length
-      ? 'Fertig geschält! Jetzt verkaufen.'
+      ? (engine.stationNear ? 'Fertig geschält! Jetzt verkaufen (E).' : 'Fertig geschält! Bring sie zur Bananen-Base.')
       : 'Ziehe die Schale nach unten – links, Mitte oder rechts.';
 
   if (collapsed) {
@@ -111,8 +111,8 @@ export function PeelPanel({ engine }: { engine: Engine }) {
           </div>
           <div className="peel-actions">
             <button className="btn ghost" onClick={() => { engine.grabFromPile(); sfx.grab(); }} disabled={m.slots.length >= hands}>Banane nehmen</button>
-            <button className="btn" disabled={!m.slots.length} onClick={() => engine.manualSellAll()}>
-              Verkaufen {m.slots.length ? formatMoney(peeled * 3 + raw) : ''}
+            <button className="btn" disabled={!m.slots.length || !engine.stationNear} onClick={() => engine.manualSellAll()} title={engine.stationNear ? '' : 'Lauf zur Bananen-Base, um zu verkaufen'}>
+              {engine.stationNear ? `Verkaufen ${m.slots.length ? formatMoney(peeled * 3 + raw) : ''}` : 'Zur Base laufen'}
             </button>
           </div>
           {raw > 0 && peeled > 0 && <small className="note">Ungeschälte Bananen bringen nur 1 $.</small>}

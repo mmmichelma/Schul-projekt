@@ -28,7 +28,7 @@ export function BuildBar({ engine }: { engine: Engine }) {
       icon: engine.icons['belt' + i],
     }))
     : tab
-      ? BUILDING_LIST.filter((d) => d.category === tab).map((d) => ({
+      ? BUILDING_LIST.filter((d) => d.category === tab && !d.hidden).map((d) => ({
         key: d.id, name: d.name, price: d.price,
         sub: d.category === 'collector' ? `${d.speed}/s · Radius ${d.radius}`
           : d.category === 'machine' ? `${d.speed}/s · ${d.desc}`

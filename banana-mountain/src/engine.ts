@@ -28,7 +28,7 @@ export interface Toast { id: number; text: string; kind: 'info' | 'good' | 'bad'
 export interface Settings {
   quality: number; showFps: boolean;
   // Grafik
-  shadows: 'auto' | 'on' | 'off'; resScale: number; lodScale: number; fpsLimit: number; effects: boolean; fov: number;
+  shadows: 'auto' | 'on' | 'off'; ao: 'auto' | 'on' | 'off'; resScale: number; lodScale: number; fpsLimit: number; effects: boolean; fov: number;
   // Audio
   master: number; music: number; sfx: number; musicOn: boolean;
   // Steuerung
@@ -37,7 +37,7 @@ export interface Settings {
   hints: boolean; startView: 'walk' | 'build';
 }
 export const DEFAULT_SETTINGS: Settings = {
-  quality: 2, showFps: false, shadows: 'auto', resScale: 1, lodScale: 1, fpsLimit: 0, effects: true, fov: 42,
+  quality: 2, showFps: false, shadows: 'auto', ao: 'auto', resScale: 1, lodScale: 1, fpsLimit: 0, effects: true, fov: 42,
   master: 0.8, music: 0.5, sfx: 0.8, musicOn: true, sensitivity: 1, invertY: false, runToggle: false,
   hints: true, startView: 'walk',
 };
@@ -445,6 +445,7 @@ export class Engine {
       this.keyboardCamera(dt);
       const p = this.player;
       this.r?.updatePlayer(dt, p.x, p.y, p.z, p.yaw, 0, false, this.myManual().slots.length > 0, true);
+      this.checkStation();
     }
     this.activityTimer += dt;
     if (this.activityTimer > 1) {
@@ -591,7 +592,7 @@ export class Engine {
   private applySettings() {
     const s = this.settings;
     if (this.r) {
-      this.r.setTuning({ resScale: s.resScale, lodScale: s.lodScale, shadows: s.shadows, effects: s.effects }, s.fov);
+      this.r.setTuning({ resScale: s.resScale, lodScale: s.lodScale, shadows: s.shadows, effects: s.effects, ao: s.ao }, s.fov);
       this.r.setQuality(QUALITIES[s.quality]);
     }
     setVolumes({ master: s.master, music: s.music, sfx: s.sfx, musicOn: s.musicOn });
@@ -685,11 +686,23 @@ export class Engine {
     c.tz += (p.z - c.tz) * (1 - Math.exp(-14 * dt));
     c.ty += (p.y - c.ty) * (1 - Math.exp(-8 * dt));
     r.updatePlayer(dt, p.x, p.y, p.z, p.yaw, p.speed, p.air, this.myManual().slots.length > 0, true);
+    this.checkStation();
     // Mitspieler sehen dich laufen
     const now = performance.now();
     if (this.link && this.net.me && this.players.length > 1 && now - this.lastAvatarSend > 100) {
       this.lastAvatarSend = now;
       this.link.send('cursor', { pid: this.pid, name: this.net.me.name, x: p.x, z: p.z, y: p.y, yaw: p.yaw, walk: true, hold: this.myManual().slots.length > 0 });
+    }
+  }
+
+  // An der Station? (für Anzeige, E-Taste und Verkaufskorb)
+  private checkStation() {
+    const st = this.findStation();
+    if (st !== this.stationNear) { this.stationNear = st; this.emit(); }
+    const m = this.myManual();
+    if (st && m.up.autosell && m.slots.some((b) => b.mask === 7) && performance.now() - this.lastAutoSell > 400) {
+      this.lastAutoSell = performance.now();
+      this.run({ k: 'sellHand', station: st, peeledOnly: true });
     }
   }
 
@@ -786,7 +799,29 @@ export class Engine {
     this.run({ k: 'peel', strip });
     return 1;
   }
-  manualSellAll() { this.run({ k: 'sellHand' }); }
+  // Verkaufen nur an einer Station (Base oder Verkaufsstand) in der Nähe der Figur
+  manualSellAll() {
+    const st = this.stationNear;
+    if (!st) { this.toast('Bring die Bananen zur Bananen-Base – nur dort kannst du verkaufen.', 'bad'); return; }
+    if (!this.myManual().slots.length) return;
+    this.run({ k: 'sellHand', station: st });
+  }
+
+  // Verkaufsstation in Reichweite der Figur (Abstand zur Grundfläche)
+  stationNear = 0;
+  private findStation(): number {
+    const p = this.player;
+    let best = 0, bd = 2.3;
+    for (const e of this.sim.ents.values()) {
+      if (e.kind !== 'building' || BUILDINGS[e.type].category !== 'sell' || !e.enabled) continue;
+      const dx = Math.max(e.x - p.x, 0, p.x - (e.x + e.w));
+      const dz = Math.max(e.y - p.z, 0, p.z - (e.y + e.h));
+      const d = Math.hypot(dx, dz);
+      if (d < bd) { bd = d; best = e.id; }
+    }
+    return best;
+  }
+  private lastAutoSell = 0;
   buyManual(id: ManualUpgradeId) {
     const cost = this.sim.manualUpgradeCost(id, this.pid);
     if (cost === null || this.sim.money < cost) { this.toast('Nicht genug Geld.', 'bad'); return; }
@@ -1079,7 +1114,13 @@ export class Engine {
   private onKey(e: KeyboardEvent, down: boolean) {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     const k = e.key.toLowerCase();
-    if (this.view === 'walk' && k === 'e') { if (down && !e.repeat) this.grabNear(); return; }
+    if (this.view === 'walk' && k === 'e') {
+      if (down && !e.repeat) {
+        if (this.stationNear && this.myManual().slots.length) this.manualSellAll();
+        else this.grabNear();
+      }
+      return;
+    }
     if (this.view === 'walk' && k === ' ') { e.preventDefault(); if (down) this.jump(); return; }
     if (['w', 'a', 's', 'd', 'q', 'e', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
       if (down) this.keys.add(k); else this.keys.delete(k);

@@ -56,6 +56,8 @@ export interface BuildingDef {
   rate?: number;       // Verkauf & Lager: Bananen pro Sekunde
   capacity?: number;   // Lager
   upgradable?: boolean;
+  hidden?: boolean;     // nicht in der Bauleiste (z. B. die Bananen-Base)
+  fixed?: boolean;      // kann nicht abgerissen werden
 }
 
 const B: BuildingDef[] = [
@@ -77,6 +79,7 @@ const B: BuildingDef[] = [
   { id: 'pack', name: 'Verpackungsmaschine', category: 'machine', price: 75000, w: 2, h: 2, speed: 3, inStage: 7, upgradable: true, desc: 'Veredelt → Verpackt' },
   { id: 'premium', name: 'Premium-Produktionsmaschine', category: 'machine', price: 250000, w: 3, h: 3, speed: 5, inStage: 8, upgradable: true, desc: 'Verpackt → Premium' },
   // ---------------------------------------------------------------- Verkauf
+  { id: 'base', name: 'Bananen-Base', category: 'sell', price: 0, w: 4, h: 3, rate: 20, hidden: true, fixed: true, desc: 'Deine Base: Hier verkaufst du Bananen aus deinen Händen. Förderbänder können von allen Seiten anliefern (20/s).' },
   { id: 'sell1', name: 'Standard-Verkauf', category: 'sell', price: 200, w: 2, h: 2, rate: 10, desc: 'Verkauft 10 Bananen/s. Nimmt von allen Seiten an.' },
   { id: 'sell2', name: 'Großhandel', category: 'sell', price: 15000, w: 3, h: 3, rate: 50, desc: 'Verkauft 50 Bananen/s.' },
   { id: 'sell3', name: 'Exportzentrum', category: 'sell', price: 250000, w: 3, h: 3, rate: 250, desc: 'Verkauft 250 Bananen/s.' },
@@ -148,7 +151,7 @@ export const MANUAL_UPGRADES: ManualUpgradeDef[] = [
   { id: 'strips', name: 'Profi-Schältechnik', desc: 'Ein Zug schält 2 Streifen – auf der höchsten Stufe alle 3.', costs: [35, 220] },
   { id: 'hands', name: 'Mehr Hände', desc: 'Du hältst eine Banane mehr. Alle werden gleichzeitig geschält.', costs: [20, 90, 400, 1800, 7500] },
   { id: 'tongs', name: 'Bananenzange', desc: 'Ein Klick auf den Berg füllt alle freien Hände.', costs: [45] },
-  { id: 'autosell', name: 'Verkaufskorb', desc: 'Fertig geschälte Bananen werden sofort verkauft.', costs: [70] },
+  { id: 'autosell', name: 'Verkaufskorb', desc: 'An einer Verkaufsstation werden geschälte Bananen automatisch verkauft – du musst nur hinlaufen.', costs: [70] },
   { id: 'autograb', name: 'Nachschub-Rutsche', desc: 'Leere Hände werden automatisch aus dem Berg gefüllt.', costs: [350, 1500, 6000, 24000] },
   { id: 'apprentice', name: 'Schäl-Lehrling', desc: 'Ein Helfer schält automatisch Streifen ab.', costs: [250, 1200, 5000, 20000, 80000] },
 ];

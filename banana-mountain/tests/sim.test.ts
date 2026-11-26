@@ -39,7 +39,7 @@ describe('Bananenberg', () => {
     expect(sim.pileRemaining).toBe(TOTAL);
     expect(sim.audit().total).toBe(TOTAL);
     expect(sim.money).toBe(0);
-    expect(sim.buildingList().filter((b) => b.type === 'sell1').length).toBe(1);
+    expect(sim.buildingList().filter((b) => b.type === 'base').length).toBe(1);
   });
 
   it('auf Bananen darf nicht gebaut werden', () => {
@@ -62,7 +62,10 @@ describe('Handarbeit', () => {
     expect(sim.manual.slots[0].mask).toBe(3);
     sim.manualPeel(1); // schon geschält -> nimmt den nächsten freien Streifen
     expect(sim.manual.slots[0].mask).toBe(7);
-    expect(sim.manualSellAll()).toBe(1);
+    const base = sim.buildingList().find((b) => b.type === 'base')!;
+    expect(sim.manualSellAll('me', 9999)).toBe(0);     // ohne Station kein Verkauf
+    expect(sim.money).toBe(0);
+    expect(sim.manualSellAll('me', base.id)).toBe(1);
     expect(sim.money).toBe(3);
     expect(sim.stats.sold).toBe(1);
     expect(sim.audit().total).toBe(TOTAL);
@@ -70,8 +73,9 @@ describe('Handarbeit', () => {
 
   it('rohe Banane bringt 1 $, Upgrades wirken', () => {
     const sim = Sim.newGame();
+    const base = sim.buildingList().find((b) => b.type === 'base')!;
     sim.manualTake(-1);
-    sim.manualSellAll();
+    sim.manualSellAll('me', base.id);
     expect(sim.money).toBe(1);
     sim.money = 1000;
     expect(sim.buyManualUpgrade('hands')).toBe(true);
@@ -80,7 +84,9 @@ describe('Handarbeit', () => {
     expect(sim.buyManualUpgrade('autosell')).toBe(true);
     expect(sim.manualTake(-1)).toBe(2);
     sim.manualPeel(0); // 2 Streifen pro Zug
-    sim.manualPeel(2); // fertig -> automatisch verkauft
+    sim.manualPeel(2); // fertig – verkauft wird erst an der Station
+    expect(sim.manual.slots.map((b) => b.mask)).toEqual([7, 7]);
+    expect(sim.sellPeeledManual('me', base.id)).toBe(2);
     expect(sim.manual.slots.length).toBe(0);
     expect(sim.stats.manualPeeledSold).toBe(2);
     expect(sim.audit().total).toBe(TOTAL);
@@ -93,7 +99,23 @@ describe('Handarbeit', () => {
     sim.buyManualUpgrade('apprentice');
     sim.buyManualUpgrade('autosell');
     run(sim, 30);
-    expect(sim.stats.manualPeeledSold).toBeGreaterThan(3);
+    expect(sim.manual.slots.length).toBe(1);
+    expect(sim.manual.slots[0].mask).toBe(7);           // Lehrling hat geschält
+    const base = sim.buildingList().find((b) => b.type === 'base')!;
+    sim.sellPeeledManual('me', base.id);
+    run(sim, 5);
+    expect(sim.stats.manualPeeledSold).toBe(1);
+    expect(sim.manual.slots.length).toBe(1);             // Rutsche hat nachgefüllt
+  });
+});
+
+describe('Bananen-Base', () => {
+  it('kann nicht abgerissen werden und nimmt Bänder an', () => {
+    const sim = Sim.newGame();
+    const base = sim.buildingList().find((b) => b.type === 'base')!;
+    expect(sim.demolish(base.id)).toBe(false);
+    expect(sim.get(base.id)).toBeTruthy();
+    expect(sim.isSellStation(base.id)).toBe(true);
   });
 });
 

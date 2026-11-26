@@ -24,7 +24,7 @@ it('Gastgeber und Gast bleiben im Gleichschritt (auch bei spätem Beitritt)', ()
     [41, 'ben', { k: 'peel', strip: 2 }],
     [60, 'anna', { k: 'belts', cells: [[X + 7, Y + 1, 0], [X + 8, Y + 1, 0], [X + 9, Y + 1, 1], [X + 9, Y + 2, 1]], tier: 0 }],
     [61, 'anna', { k: 'place', type: 'sell1', x: X + 8, y: Y + 3, dir: 0 }],
-    [300, 'ben', { k: 'sellHand' }],
+    [300, 'ben', { k: 'sellHand', station: 1 }],
     [310, 'anna', { k: 'upgrade', ids: [2, 3] }],
     [500, 'ben', { k: 'buyHand', id: 'hands' }],
     [700, 'anna', { k: 'demolish', ids: [6] }],

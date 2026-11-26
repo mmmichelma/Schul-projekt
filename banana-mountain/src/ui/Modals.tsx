@@ -146,7 +146,9 @@ export function hintFor(engine: Engine): string | null {
     ? 'Lauf mit WASD zum gelben Bananenberg und drück E (oder klick auf den Berg), um eine Banane zu nehmen. V wechselt zur Bau-Ansicht.'
     : 'Klicke auf den gelben Bananenberg, um deine erste Banane zu nehmen.';
   if (sim.stats.sold === 0 && slots.some((s) => s.mask !== 7)) return 'Ziehe im Schälbereich die Schale nach unten – drei Streifen.';
-  if (sim.stats.sold === 0) return 'Geschält! Klicke auf „Verkaufen“ – das bringt 3 $.';
+  if (sim.stats.sold === 0) return engine.stationNear
+    ? 'Du bist an der Base! Drück E oder „Verkaufen“ – das bringt 3 $.'
+    : 'Geschält! Lauf mit der Banane zur Bananen-Base (das Haus mit dem gelben Dach) und verkaufe sie dort.';
   if (!collectors && sim.money < 50) return `Weiter schälen! Bei 50 $ kannst du deinen ersten Greifarm kaufen. (Tipp: „Werkstatt“ im Schälbereich)`;
   if (!collectors) return 'Du kannst dir einen Kleinen Greifarm leisten! „Sammeln“ → am Rand des Berges platzieren (gelber Kreis = Arbeitsradius).';
   if (!belts) return 'Verbinde den orangen Ausgangspfeil des Greifarms mit Förderbändern (ziehen!) bis zur Verkaufsstation.';

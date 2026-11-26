@@ -21,7 +21,7 @@ export type Cmd =
   | { k: 'salvage' }
   | { k: 'take'; tile: number }
   | { k: 'peel'; strip: number }
-  | { k: 'sellHand' }
+  | { k: 'sellHand'; station: number; peeledOnly?: boolean }
   | { k: 'buyHand'; id: ManualUpgradeId };
 
 const int = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
@@ -47,7 +47,8 @@ export function validCmd(c: unknown): c is Cmd {
         && bp.entries.every((e) => e && int(e.dx, 0, 500) && int(e.dy, 0, 500) && int(e.dir, 0, 3)
           && (e.belt ? int(e.tier ?? 0, 0, BELT_TIERS.length - 1) : typeof e.type === 'string' && !!BUILDINGS[e.type] && int(e.level ?? 1, 1, 10)));
     }
-    case 'salvage': case 'sellHand': return true;
+    case 'salvage': return true;
+    case 'sellHand': return int(o.station, 1, 1e9) && (o.peeledOnly === undefined || typeof o.peeledOnly === 'boolean');
     case 'take': return int(o.tile, -1, 1e6);
     case 'peel': return int(o.strip, 0, 2);
     case 'buyHand': return MANUAL_UPGRADES.some((u) => u.id === o.id);
@@ -71,7 +72,7 @@ export function applyCmd(sim: Sim, pid: string, c: Cmd): boolean {
     case 'salvage': return sim.sellSalvage() > 0;
     case 'take': return sim.manualTake(c.tile, pid) > 0;
     case 'peel': return sim.manualPeel(c.strip, pid) > 0;
-    case 'sellHand': return sim.manualSellAll(pid) > 0;
+    case 'sellHand': return (c.peeledOnly ? sim.sellPeeledManual(pid, c.station) : sim.manualSellAll(pid, c.station)) > 0;
     case 'buyHand': return sim.buyManualUpgrade(c.id, pid);
   }
 }
