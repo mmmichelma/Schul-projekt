@@ -6,10 +6,9 @@
 ;  PortB (Bit 0..3) -> Motor (z.B. ueber ULN2003)
 ;  PortD (Bit 0..1) -> LEDs: zeigen S1 / S2 an
 ;
-;  Controller: ATmega328P, 16 MHz  (fuer ATmega8 -> "m8def.inc")
+;  Controller: ATmega8, 1 MHz  (AVR-Werkstatt)
+;  Motor: 28BYJ-48 bipolar an L293D: PB0=A1, PB1=A2, PB2=B1, PB3=B2
 ; =====================================================================
-
-.include "m328Pdef.inc"
 
 .def temp    = r18
 .def counter = r19              ; ein gesetztes Bit = aktueller Halbschritt (1..8)
@@ -60,7 +59,7 @@ links:
 motor_aus:
         ldi phase, 0b00000000   ; alle Spulen aus (Motor wird nicht heiss)
         out PORTB, phase
-        rcall Wait10ms
+        rcall Wait2ms
         rjmp mainloop
 
 ; ---------------------------------------------------------------------
@@ -93,7 +92,7 @@ stepper:
 
         out PORTB, phase        ; Schreibe Phase in den Motor
 
-        rcall Wait10ms          ; Wartezeit zwischen zwei Halbschritten
+        rcall Wait2ms           ; Wartezeit zwischen zwei Halbschritten
         rjmp mainloop           ; Wiederhole
 
 ; ---------------------------------------------------------------------
@@ -112,15 +111,16 @@ led:
         ret
 
 ; ---------------------------------------------------------------------
-;  Wartezeit ca. 10 ms bei 16 MHz  (200 * 200 * 4 Takte = 160000 Takte)
-;  Kleinerer Wert bei r24/r25 -> Motor dreht schneller
+;  Wartezeit ca. 2 ms bei 1 MHz  (10 * 50 * 4 Takte = 2000 Takte)
+;  -> 4096 Halbschritte pro Umdrehung * 2 ms = ca. 8 s pro Umdrehung
+;  Groesserer Wert bei r25 -> Motor dreht langsamer
 ; ---------------------------------------------------------------------
-Wait10ms:
+Wait2ms:
         push r24
         push r25
-        ldi r25, 200
+        ldi r25, 10
 w_aussen:
-        ldi r24, 200
+        ldi r24, 50
 w_innen:
         nop
         dec r24
