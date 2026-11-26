@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Heuhaufen-Helden</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ============================================================ Kopfzeile -->
+  <header id="topbar">
+    <div class="logo" data-go="menu">🌾 Heuhaufen-Helden</div>
+    <div class="topstats">
+      <span class="pill" title="Münzen">🪙 <b id="coins">0</b></span>
+      <span class="pill" title="Gefundene Gegenstände">🔎 <b id="foundTotal">0</b></span>
+      <button class="icon-btn" id="soundBtn" title="Ton an/aus">🔊</button>
+    </div>
+  </header>
+
+  <nav id="nav">
+    <button data-go="menu" class="active">🗺️ Welten</button>
+    <button data-go="online">🌐 Online</button>
+    <button data-go="shop">🛒 Shop</button>
+    <button data-go="album">📖 Album</button>
+    <button data-go="erfolge">🏅 Erfolge</button>
+  </nav>
+
+  <main>
+    <!-- ============================================================ Welten -->
+    <section id="screen-menu" class="screen active">
+      <h1>Such &amp; Sammel!</h1>
+      <p class="sub">Finde alle versteckten Gegenstände, bevor die Zeit abläuft. Sammle Münzen, schalte neue Welten frei
+        und vervollständige dein Album.</p>
+      <div id="worldGrid" class="grid"></div>
+    </section>
+
+    <!-- ============================================================ Shop -->
+    <section id="screen-shop" class="screen">
+      <h1>🛒 Shop</h1>
+      <p class="sub">Verbesserungen bleiben für immer. Hilfsmittel verbrauchst du im Spiel.</p>
+      <h2>Verbesserungen</h2>
+      <div id="upgradeGrid" class="grid"></div>
+      <h2>Hilfsmittel</h2>
+      <div id="itemGrid" class="grid"></div>
+    </section>
+
+    <!-- ============================================================ Album -->
+    <section id="screen-album" class="screen">
+      <h1>📖 Sammelalbum</h1>
+      <p class="sub">In jeder Runde kann ein seltener Gegenstand versteckt sein. Findest du alle?</p>
+      <div id="albumProgress" class="progress big"><div></div><span></span></div>
+      <div id="albumList"></div>
+    </section>
+
+    <!-- ============================================================ Erfolge -->
+    <section id="screen-erfolge" class="screen">
+      <h1>🏅 Erfolge</h1>
+      <p class="sub">Jeder Erfolg bringt dir Bonus-Münzen.</p>
+      <div id="achList" class="grid"></div>
+    </section>
+
+    <!-- ============================================================ Online -->
+    <section id="screen-online" class="screen">
+      <h1>🌐 Online-Modus</h1>
+      <div id="onlineOffline" class="card warn hidden">
+        <b>Keine Verbindung zum Server.</b>
+        <p>Der Online-Modus braucht den Spiel-Server. Starte ihn im Ordner <code>sammelspiel</code> mit
+          <code>npm install</code> und <code>npm start</code> und öffne dann <code>http://localhost:3000</code>.
+          Freunde im gleichen WLAN können die angezeigte Adresse öffnen.</p>
+        <button class="btn" id="reconnectBtn">🔄 Neu verbinden</button>
+      </div>
+
+      <div id="onlineLobby" class="two-col">
+        <div class="card">
+          <h2>Mitspielen</h2>
+          <label class="field">Dein Name
+            <input id="nameInput" maxlength="16" placeholder="z. B. Nadelkönig">
+          </label>
+          <button class="btn big" id="quickBtn">⚡ Schnelles Spiel</button>
+          <button class="btn alt" id="createBtn">🏠 Privaten Raum erstellen</button>
+          <div class="row">
+            <input id="codeInput" maxlength="4" placeholder="CODE" class="code-input">
+            <button class="btn alt" id="joinBtn">Beitreten</button>
+          </div>
+          <p class="hint">Alle im Raum suchen gleichzeitig im selben Bild. Wer einen Gegenstand zuerst anklickt,
+            bekommt den Punkt! Sammelgegenstände zählen 3 Punkte.</p>
+        </div>
+        <div class="card">
+          <h2>🏆 Bestenliste</h2>
+          <ol id="leaderboard" class="board"></ol>
+        </div>
+      </div>
+
+      <div id="onlineRoom" class="two-col hidden">
+        <div class="card">
+          <h2>Raum <span id="roomCode" class="code"></span></h2>
+          <p class="hint" id="roomHint"></p>
+          <ul id="roomPlayers" class="players"></ul>
+          <div id="hostControls">
+            <h3>Welt wählen</h3>
+            <div id="roomWorlds" class="chips"></div>
+            <button class="btn big" id="startBtn">▶️ Runde starten</button>
+          </div>
+          <p id="waitHost" class="hint hidden">Warte, bis der Gastgeber die Runde startet …</p>
+          <button class="btn alt" id="leaveBtn">🚪 Raum verlassen</button>
+        </div>
+        <div class="card">
+          <h2>🏆 Bestenliste</h2>
+          <ol id="leaderboard2" class="board"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Spiel -->
+    <section id="screen-game" class="screen">
+      <div id="hud">
+        <button class="btn small alt" id="quitBtn">✖</button>
+        <div class="hud-target">
+          <canvas id="preview" width="120" height="80"></canvas>
+          <div>
+            <div class="hud-title" id="hudTitle">Heuhaufen · Level 1</div>
+            <div class="hud-count"><b id="hudFound">0</b> / <span id="hudTotal">0</span> <span id="hudName">Nadeln</span></div>
+          </div>
+        </div>
+        <div class="hud-timer">
+          <div id="timeBar" class="progress"><div></div><span id="timeText">60</span></div>
+        </div>
+        <div class="hud-tools">
+          <button class="tool" id="toolMagnet" title="Magnet: zeigt ungefähr, wo etwas liegt (Taste M)">🧲 <b>0</b></button>
+          <button class="tool" id="toolFreeze" title="Zeitstopp: Zeit hält 10 Sekunden an (Taste Z)">⏸️ <b>0</b></button>
+          <button class="tool" id="toolLupe" title="Lupe an/aus (Taste L)">🔍</button>
+        </div>
+      </div>
+      <div id="playArea">
+        <div id="canvasWrap"><canvas id="game"></canvas><div id="countdown" class="hidden"></div></div>
+        <aside id="scorePanel" class="hidden">
+          <h3>Punkte</h3>
+          <ol id="scoreList"></ol>
+          <div class="emotes">
+            <button data-e="👍">👍</button><button data-e="😂">😂</button><button data-e="😮">😮</button>
+            <button data-e="🔥">🔥</button><button data-e="😭">😭</button><button data-e="🎉">🎉</button>
+          </div>
+          <div id="feed"></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================ Ergebnis-Fenster -->
+  <div id="overlay" class="hidden">
+    <div class="modal" id="modal"></div>
+  </div>
+  <div id="toasts"></div>
+
+  <script src="shared.js"></script>
+  <script src="worlds.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

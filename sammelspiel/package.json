@@ -1,0 +1,14 @@
+{
+  "name": "heuhaufen-helden",
+  "version": "1.0.0",
+  "description": "Such- und Sammelspiel mit Online-Modus (Nadel im Heuhaufen & mehr)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}
