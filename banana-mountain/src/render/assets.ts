@@ -12,7 +12,7 @@ export function rbox(w: number, h: number, d: number, radius?: number): THREE.Bu
   const r = radius ?? Math.min(0.06, Math.min(w, h, d) * 0.22);
   const k = `${w},${h},${d},${r}`;
   let g = RBOX.get(k);
-  if (!g) { g = new RoundedBoxGeometry(w, h, d, 3, Math.max(0.001, r)); RBOX.set(k, g); }
+  if (!g) { g = new RoundedBoxGeometry(w, h, d, 2, Math.max(0.001, r)); RBOX.set(k, g); }
   return g;
 }
 // Für Merges: eine eigene Kopie
@@ -53,6 +53,7 @@ export interface BananaOpts {
   tip?: string;
   stem?: string;
   stripes?: string; // Glasur-Streifen
+  radial?: number;  // Punkte rund um den Querschnitt
 }
 
 /*
@@ -62,8 +63,8 @@ export interface BananaOpts {
  */
 export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
   const len = o.len ?? 0.9, R = o.radius ?? 0.1, bend = o.bend ?? 0.22;
-  const seg = Math.max(10, o.seg ?? 16);
-  const radial = 12;
+  const seg = Math.max(6, o.seg ?? 16);
+  const radial = o.radial ?? 12;
   const plain = !!o.stripes || o.body !== undefined;
   const body = new THREE.Color(o.body ?? '#ffd52e');
   const ridge = body.clone().multiplyScalar(0.86);

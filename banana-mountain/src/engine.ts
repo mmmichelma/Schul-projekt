@@ -32,13 +32,13 @@ export interface Settings {
   // Audio
   master: number; music: number; sfx: number; musicOn: boolean;
   // Steuerung
-  sensitivity: number; invertY: boolean; runToggle: boolean;
+  sensitivity: number; invertY: boolean; runToggle: boolean; camFollow: boolean; autoQuality: boolean;
   // Spiel
   hints: boolean; startView: 'walk' | 'build';
 }
 export const DEFAULT_SETTINGS: Settings = {
   quality: 2, showFps: false, shadows: 'auto', ao: 'auto', resScale: 1, lodScale: 1, fpsLimit: 0, effects: true, fov: 42,
-  master: 0.8, music: 0.5, sfx: 0.8, musicOn: true, sensitivity: 1, invertY: false, runToggle: false,
+  master: 0.8, music: 0.5, sfx: 0.8, musicOn: true, sensitivity: 1, invertY: false, runToggle: false, camFollow: true, autoQuality: true,
   hints: true, startView: 'walk',
 };
 export type View = 'walk' | 'build';
@@ -463,7 +463,12 @@ export class Engine {
     this.r!.render(dt, Math.min(1, this.acc / DT));
     this.fpsFrames++;
     this.fpsTime += dt;
-    if (this.fpsTime >= 1) { this.fps = Math.round(this.fpsFrames / this.fpsTime); this.fpsFrames = 0; this.fpsTime = 0; }
+    if (this.fpsTime >= 1) {
+      this.fps = Math.round(this.fpsFrames / this.fpsTime);
+      this.fpsFrames = 0;
+      this.fpsTime = 0;
+      this.autoTune();
+    }
     this.uiTimer += dt;
     if (this.uiTimer > 0.2) { this.uiTimer = 0; this.emit(); }
     this.saveTimer += dt;
@@ -589,6 +594,24 @@ export class Engine {
 
   resetSettings() { this.setSettings({ ...DEFAULT_SETTINGS }); }
 
+  // Läuft es zu langsam, wird die Grafik automatisch eine Stufe gesenkt
+  private autoTune() {
+    const s = this.settings;
+    const lim = s.fpsLimit || 60;
+    if (!s.autoQuality || document.hidden || performance.now() - this.startedAt < 6000) return;
+    if (this.fps < Math.min(32, lim * 0.6)) this.slowSeconds++; else this.slowSeconds = 0;
+    if (this.slowSeconds < 4) return;
+    this.slowSeconds = 0;
+    if (s.ao === 'on') { this.setSettings({ ao: 'off' }); this.toast('Ruckelt es? Plastische Schatten (AO) wurden ausgeschaltet.'); return; }
+    if (s.quality > 0) {
+      this.setSettings({ quality: s.quality - 1 });
+      this.toast(`Grafik automatisch auf „${QUALITIES[s.quality].name}“ gesenkt, damit es flüssig läuft.`);
+    } else if (s.resScale > 0.6) {
+      this.setSettings({ resScale: Math.round((s.resScale - 0.15) * 100) / 100 });
+      this.toast('Auflösung automatisch gesenkt, damit es flüssig läuft.');
+    }
+  }
+
   private applySettings() {
     const s = this.settings;
     if (this.r) {
@@ -680,6 +703,16 @@ export class Engine {
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
       p.yaw += d * (1 - Math.exp(-12 * dt));
+    }
+    // Kamera schwenkt beim Vorwärtslaufen automatisch hinter die Figur
+    const fwdInput = ix * fx + iz * fz;
+    if (this.settings.camFollow && fwdInput > 0.25 && p.speed > 1 && performance.now() - this.lastCamDrag > 1200) {
+      const behind = Math.atan2(-p.vx, -p.vz);
+      let dy = behind - c.yaw;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      c.yaw += dy * (1 - Math.exp(-2.6 * dt * fwdInput));
+      c.pitch += (0.32 - c.pitch) * (1 - Math.exp(-1.5 * dt));
     }
     // Kamera folgt weich
     c.tx += (p.x - c.tx) * (1 - Math.exp(-14 * dt));
@@ -822,6 +855,9 @@ export class Engine {
     return best;
   }
   private lastAutoSell = 0;
+  private lastCamDrag = 0;
+  private slowSeconds = 0;
+  private startedAt = performance.now();
   buyManual(id: ManualUpgradeId) {
     const cost = this.sim.manualUpgradeCost(id, this.pid);
     if (cost === null || this.sim.money < cost) { this.toast('Nicht genug Geld.', 'bad'); return; }
@@ -974,6 +1010,7 @@ export class Engine {
     }
     const moved = p ? Math.hypot(p.x - p.sx, p.y - p.sy) : 0;
     if (this.gesture === 'rotate' && prev && p) {
+      this.lastCamDrag = performance.now();
       const sens = this.settings.sensitivity;
       const inv = this.settings.invertY ? -1 : 1;
       this.r.rotate(-(p.x - prev.x) * 0.006 * sens, (p.y - prev.y) * 0.004 * sens * inv * (this.view === 'walk' ? 1.2 : 1));

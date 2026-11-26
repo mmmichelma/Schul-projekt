@@ -27,7 +27,7 @@ export interface Quality {
 export const QUALITIES: Quality[] = [
   { name: 'Niedrig', shadows: false, shadowRes: 1024, pixelRatio: 0.85, lod: 45, pileInstances: true },
   { name: 'Mittel', shadows: true, shadowRes: 1024, pixelRatio: 1, lod: 70, pileInstances: true },
-  { name: 'Hoch', shadows: true, shadowRes: 2048, pixelRatio: 1.5, lod: 95, pileInstances: true },
+  { name: 'Hoch', shadows: true, shadowRes: 2048, pixelRatio: 1.25, lod: 85, pileInstances: true },
   { name: 'Ultra', shadows: true, shadowRes: 4096, pixelRatio: 2, lod: 140, pileInstances: true },
 ];
 
@@ -227,7 +227,7 @@ export class GameRenderer {
     this.pile.dispose();
     this.pile = new PileView(sim);
     this.pile.lodDistance = this.quality.lod;
-    this.pile.setShadows(this.quality.shadows, this.quality.shadows && this.quality.shadowRes >= 2048);
+    this.pile.setShadows(this.quality.shadows, this.quality.shadows && this.quality.shadowRes >= 4096);
     this.scene.add(this.pile.group);
     for (const v of this.views.values()) this.scene.remove(v.model.group);
     this.views.clear();
@@ -250,7 +250,7 @@ export class GameRenderer {
     this.renderer.setPixelRatio(Math.max(0.4, Math.min(window.devicePixelRatio || 1, q.pixelRatio) * t.resScale));
     this.renderer.shadowMap.enabled = q.shadows;
     this.sun.castShadow = q.shadows;
-    this.aoOn = t.ao === 'on' || (t.ao === 'auto' && preset.shadowRes >= 2048);
+    this.aoOn = t.ao === 'on' || (t.ao === 'auto' && preset.shadowRes >= 4096);
     if (this.composer) { this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(this.size.w, this.size.h); }
     if (this.sun.shadow.mapSize.x !== q.shadowRes) {
       this.sun.shadow.mapSize.set(q.shadowRes, q.shadowRes);
@@ -259,7 +259,7 @@ export class GameRenderer {
     }
     this.pile.lodDistance = q.lod;
     this.lodDist = q.lod;
-    this.pile.setShadows(q.shadows, q.shadows && q.shadowRes >= 2048);
+    this.pile.setShadows(q.shadows, q.shadows && q.shadowRes >= 4096);
     this.scene.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(m)) m.forEach((x) => { x.needsUpdate = true; }); else if (m) m.needsUpdate = true;

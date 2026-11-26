@@ -509,15 +509,13 @@ function buildOven(type: string): Model {
   const top = group(chimney, 0, 0.45, 0);
   const coils: THREE.Mesh[] = [];
   for (let i = 0; i < 3; i++) coils.push(box(d, 0.8, 0.03, 0.03, glowMat, 0, 0.56 + i * 0.12, 0.83));
-  const light = new THREE.PointLight('#ff7a20', 0, 3.5, 2);
-  light.position.set(0, 0.8, 1.2);
-  d.add(light);
+  // (kein Punktlicht: das Leuchten kommt nur aus dem Material – viel schneller)
   const lamp = lampAt(d, 0.75, 1.6, -0.75);
   return finish(type, d, lamp, 1.4, (c) => {
     const w = c.status === 'working';
     const flick = w ? 1.3 + Math.sin(c.t * 13) * 0.25 + Math.sin(c.t * 7.3) * 0.2 : 0.25;
     glowMat.emissiveIntensity = flick;
-    light.intensity = w ? flick * 1.6 : 0;
+
     void coils;
   }, [top]);
 }
@@ -814,9 +812,7 @@ function buildBase(type: string): Model {
     const l = sphere(d, 0.09, lampMat, x, 1.45, 1.25);
     l.castShadow = false;
   }
-  const light = new THREE.PointLight('#ffcf7a', 1.2, 5, 2);
-  light.position.set(0, 1.3, 1.1);
-  d.add(light);
+
   // Verkaufszone vor der Theke
   if (!zoneTex) {
     zoneTex = canvasTexture(256, 128, (ctx) => {

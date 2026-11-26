@@ -11,7 +11,7 @@ import { Sim, pileHeight, tileIndex } from '../sim/sim';
 import { bananaGeometry, bananaBunchGeometry, bananaPileTexture } from './assets';
 
 const CHUNK = 8;
-const MAX_PER_TILE = 5;
+const MAX_PER_TILE = 3;
 
 function hash(a: number, b: number) {
   let n = Math.imul(a, 374761393) + Math.imul(b, 668265263);
@@ -22,8 +22,7 @@ function hash(a: number, b: number) {
 function bananasForCount(c: number) {
   if (c <= 0) return 0;
   if (c < 4) return Math.min(c, 2);
-  if (c < 30) return 3;
-  if (c < 150) return 4;
+  if (c < 60) return 2;
   return MAX_PER_TILE;
 }
 
@@ -48,8 +47,9 @@ export class PileView {
   private chunkByKey = new Map<number, Chunk>();
   private normalsDirty = false;
   private normalsTimer = 0;
-  private bananaGeo = bananaGeometry({ len: 0.95, radius: 0.12, bend: 0.24, seg: 11 });
-  private bunchGeo = bananaBunchGeometry(4, { len: 0.85, radius: 0.11, bend: 0.22, seg: 9 });
+  // Wenig Polygone: davon gibt es tausende auf dem Berg
+  private bananaGeo = bananaGeometry({ len: 0.95, radius: 0.12, bend: 0.24, seg: 8, radial: 7 });
+  private bunchGeo = bananaBunchGeometry(3, { len: 0.85, radius: 0.11, bend: 0.22, seg: 7, radial: 6 });
   private bananaMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 });
   lodDistance = 95;
   instancesVisible = true;
@@ -258,7 +258,8 @@ export class PileView {
       this.normalsTimer = 0.25;
     }
     for (const c of this.chunks) {
-      const vis = this.instancesVisible && c.center.distanceTo(camPos) < this.lodDistance;
+      // Einzelne 3D-Bananen nur in der Nähe – weiter weg reicht die Bananen-Textur
+      const vis = this.instancesVisible && c.center.distanceTo(camPos) < Math.min(42, this.lodDistance * 0.45);
       if (vis && !c.mesh.visible && c.dirty) this.rebuildChunk(c);
       c.mesh.visible = vis;
       c.bunch.visible = vis;

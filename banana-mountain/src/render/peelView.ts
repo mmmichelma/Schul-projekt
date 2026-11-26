@@ -152,14 +152,19 @@ export class PeelView {
     });
   }
 
-  render(dt: number) {
+  private idle = 0;
+  // Rückgabe: ob gezeichnet wurde (im Ruhezustand nur selten)
+  render(dt: number): boolean {
+    let moving = false;
     const k = 1 - Math.exp(-12 * dt);
     this.views = this.views.filter((v) => {
       if (v.leaving) {
+        moving = true;
         v.scale -= dt * 4;
         v.group.position.y += dt * 2;
         if (v.scale <= 0) { this.scene.remove(v.group); return false; }
       } else {
+        if (v.drop > 0 || Math.abs((v.group.userData.targetX ?? 0) - v.group.position.x) > 0.002) moving = true;
         v.drop = Math.max(0, v.drop - dt * 6);
         v.scale += ((v.group.userData.targetScale ?? 1) - v.scale) * k;
         v.group.position.x += ((v.group.userData.targetX ?? 0) - v.group.position.x) * k;
@@ -169,12 +174,16 @@ export class PeelView {
       v.group.rotation.y = Math.sin(performance.now() / 900 + v.group.position.x) * 0.08;
       for (const s of v.strips) {
         const target = s.pivot.userData.target ?? 0;
+        if (Math.abs(target - s.angle) > 0.002) moving = true;
         s.angle += (target - s.angle) * (1 - Math.exp(-9 * dt));
         s.pivot.quaternion.setFromAxisAngle(s.axis, s.angle);
       }
       return true;
     });
+    this.idle = moving ? 0 : this.idle + 1;
+    if (!moving && this.idle % 6 !== 1) return false; // ruhig: nur ~10× pro Sekunde
     this.renderer.render(this.scene, this.camera);
+    return true;
   }
 
   resize(w: number, h: number) {

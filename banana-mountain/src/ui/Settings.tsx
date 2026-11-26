@@ -64,6 +64,7 @@ export function SettingsModal({ engine, onClose }: { engine: Engine; onClose: ()
             <Slider label="Sichtweite (Details)" value={s.lodScale} min={0.5} max={2} step={0.1} fmt={pct} onChange={(v) => set({ lodScale: v })} />
             <Slider label="Sichtfeld" value={s.fov} min={32} max={75} step={1} fmt={(v) => v + '°'} onChange={(v) => set({ fov: v })} />
             <Choice label="Bildrate begrenzen" value={s.fpsLimit} options={[[0, 'Aus'], [30, '30'], [60, '60'], [120, '120']]} onChange={(v) => set({ fpsLimit: v })} />
+            <Toggle label="Automatische Qualität" note="senkt die Grafik, wenn es ruckelt" value={s.autoQuality} onChange={(v) => set({ autoQuality: v })} />
             <Toggle label="Effekte" note="Dampf, Funken" value={s.effects} onChange={(v) => set({ effects: v })} />
             <Toggle label="FPS anzeigen" value={s.showFps} onChange={(v) => set({ showFps: v })} />
             <p className="note">Läuft es ruckelig? Qualität „Niedrig“ wählen oder die Auflösung senken.</p>
@@ -83,6 +84,7 @@ export function SettingsModal({ engine, onClose }: { engine: Engine; onClose: ()
         {tab === 'steuerung' && (
           <div className="set-list">
             <Slider label="Maus-Empfindlichkeit" value={s.sensitivity} min={0.3} max={3} step={0.1} fmt={(v) => v.toFixed(1) + '×'} onChange={(v) => set({ sensitivity: v })} />
+            <Toggle label="Kamera folgt beim Laufen" note="schwenkt automatisch hinter die Figur" value={s.camFollow} onChange={(v) => set({ camFollow: v })} />
             <Toggle label="Kamera oben/unten umkehren" value={s.invertY} onChange={(v) => set({ invertY: v })} />
             <Toggle label="Immer rennen" note="Shift zum Gehen" value={s.runToggle} onChange={(v) => { set({ runToggle: v }); engine.running = v; }} />
             <h4>Tasten</h4>
