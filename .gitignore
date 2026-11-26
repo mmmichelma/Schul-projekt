@@ -1,5 +1,6 @@
-__pycache__/
-*.pyc
 *.log
+*.pyc
+__pycache__/
+dist/
 node_modules/
 sammelspiel/data/
