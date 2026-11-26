@@ -90,7 +90,7 @@ export function SettingsModal({ engine, onClose }: { engine: Engine; onClose: ()
             <h4>Tasten</h4>
             <ul className="help">
               <li><b>V</b> – zwischen Laufen und Bau-Ansicht wechseln</li>
-              <li><b>Laufen:</b> WASD bewegen · Shift rennen · Leertaste springen · E Banane greifen · Maus ziehen = umsehen</li>
+              <li><b>Laufen:</b> WASD bewegen · Shift rennen · Leertaste springen · E Banane greifen / verkaufen · C schälen · Maus ziehen = umsehen</li>
               <li><b>Bau-Ansicht:</b> Maus ziehen = verschieben · rechte Maus = drehen · Mausrad = zoomen · WASD/Q/E</li>
               <li><b>R</b> drehen · <b>B</b> Förderband · <b>X</b> Abriss · <b>Esc</b> abbrechen · <b>U</b> verbessern · <b>Entf</b> abreißen</li>
               <li><b>Shift + Ziehen</b> mehrere auswählen · <b>Strg+C / Strg+V</b> Linie kopieren</li>

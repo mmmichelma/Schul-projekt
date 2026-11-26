@@ -40,6 +40,7 @@ export function TouchControls({ engine }: { engine: Engine }) {
         {engine.stationNear && engine.myManual().slots.length
           ? <button className="sell" onPointerDown={() => engine.manualSellAll()}>Verkaufen</button>
           : <button onPointerDown={() => engine.grabNear()}>Greifen</button>}
+        {engine.myManual().slots.some((b) => b.mask !== 7) && <button onPointerDown={() => engine.peelNext()}>Schälen</button>}
         <button onPointerDown={() => engine.jump()}>Springen</button>
       </div>
     </>

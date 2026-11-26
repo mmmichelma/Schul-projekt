@@ -833,6 +833,19 @@ export class Engine {
     return 1;
   }
   // Verkaufen nur an einer Station (Base oder Verkaufsstand) in der Nähe der Figur
+  // Taste C: nächsten Schalenstreifen abziehen
+  peelNext() {
+    const m = this.myManual();
+    const b = m.slots.find((x) => x.mask !== 7);
+    if (!b) {
+      this.toast(m.slots.length ? 'Schon fertig geschält – bring sie zur Base!' : 'Du hältst keine Banane – nimm eine am Berg (E).', 'bad');
+      return;
+    }
+    let strip = 0;
+    while (strip < 3 && (b.mask & (1 << strip))) strip++;
+    if (this.peelStrip(strip)) sfx.peel();
+  }
+
   manualSellAll() {
     const st = this.stationNear;
     if (!st) { this.toast('Bring die Bananen zur Bananen-Base – nur dort kannst du verkaufen.', 'bad'); return; }
@@ -1171,6 +1184,7 @@ export class Engine {
     else if (k === 'delete' || k === 'backspace') this.demolishSelection();
     else if (k === 'u') this.upgradeSelection();
     else if (k === 'c' && (e.ctrlKey || e.metaKey)) this.copySelection();
+    else if (k === 'c') this.peelNext();
     else if (k === 'v' && (e.ctrlKey || e.metaKey) && this.clipboard) this.setTool({ kind: 'paste', bp: this.clipboard });
     else if (k === 'b') this.setTool({ kind: 'belt', tier: 0, dir: 0 });
     else if (k === 'x') this.setTool({ kind: 'demolish' });

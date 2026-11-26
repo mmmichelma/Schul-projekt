@@ -145,7 +145,7 @@ export function hintFor(engine: Engine): string | null {
   if (sim.stats.sold === 0 && !slots.length) return walk
     ? 'Lauf mit WASD zum gelben Bananenberg und drück E (oder klick auf den Berg), um eine Banane zu nehmen. V wechselt zur Bau-Ansicht.'
     : 'Klicke auf den gelben Bananenberg, um deine erste Banane zu nehmen.';
-  if (sim.stats.sold === 0 && slots.some((s) => s.mask !== 7)) return 'Ziehe im Schälbereich die Schale nach unten – drei Streifen.';
+  if (sim.stats.sold === 0 && slots.some((s) => s.mask !== 7)) return 'Schäl die Banane: drück 3× C – oder zieh im Schälbereich die Schale nach unten.';
   if (sim.stats.sold === 0) return engine.stationNear
     ? 'Du bist an der Base! Drück E oder „Verkaufen“ – das bringt 3 $.'
     : 'Geschält! Lauf mit der Banane zur Bananen-Base (das Haus mit dem gelben Dach) und verkaufe sie dort.';

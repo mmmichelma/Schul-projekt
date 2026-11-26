@@ -77,7 +77,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
     ? 'Klicke auf den Bananenberg (oder hier), um eine Banane zu nehmen.'
     : peeled === m.slots.length
       ? (engine.stationNear ? 'Fertig geschält! Jetzt verkaufen (E).' : 'Fertig geschält! Bring sie zur Bananen-Base.')
-      : 'Ziehe die Schale nach unten – links, Mitte oder rechts.';
+      : 'Ziehe die Schale nach unten – oder drück C.';
 
   if (collapsed) {
     return (
