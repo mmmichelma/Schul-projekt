@@ -1,6 +1,7 @@
 /* Kleine Klänge mit WebAudio – keine Audiodateien nötig. */
+import { ls } from '../storage/local';
 let ctx: AudioContext | null = null;
-let muted = localStorage.getItem('banana-mountain-mute') === '1';
+let muted = ls.get('banana-mountain-mute') === '1';
 
 function ac() {
   if (!ctx) ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -54,4 +55,4 @@ export const sfx = {
 };
 
 export function isMuted() { return muted; }
-export function setMuted(m: boolean) { muted = m; localStorage.setItem('banana-mountain-mute', m ? '1' : '0'); }
+export function setMuted(m: boolean) { muted = m; ls.set('banana-mountain-mute', m ? '1' : '0'); }

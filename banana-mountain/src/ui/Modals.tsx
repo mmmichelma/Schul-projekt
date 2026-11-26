@@ -82,12 +82,12 @@ export function MenuModal({ engine, onClose, onLogout }: { engine: Engine; onClo
           <button className="btn small ghost" onClick={onLogout}>Abmelden</button>
         </div>
       )}
-      {engine.mode === 'offline' && (
+      {engine.mode === 'offline' && import.meta.env.VITE_SOLO !== '1' && (
         <div className="account"><span>Offline-Modus (ohne Konto)</span><button className="btn small" onClick={onLogout}>Anmelden für Online</button></div>
       )}
       <div className="menu-list">
         <button className="btn" onClick={() => { engine.save().then(() => engine.toast('Gespeichert.', 'good')); }}>Jetzt speichern</button>
-        <button className="btn ghost" onClick={() => engine.exportSave()}>Spielstand exportieren</button>
+        {import.meta.env.VITE_SOLO !== '1' && <button className="btn ghost" onClick={() => engine.exportSave()}>Spielstand exportieren</button>}
         {engine.mode !== 'guest' && <button className="btn ghost" onClick={() => file.current?.click()}>Spielstand importieren</button>}
         <input ref={file} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { engine.importSave(f); onClose(); } e.target.value = ''; }} />
         {engine.mode === 'guest' ? null : !confirm

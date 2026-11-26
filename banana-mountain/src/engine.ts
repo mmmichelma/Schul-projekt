@@ -1,6 +1,7 @@
 /*
  * Engine: verbindet Simulation, 3D-Darstellung, Eingabe und Benutzeroberfläche.
  */
+import { ls } from './storage/local';
 import { Sim, Blueprint, rotatedSize, Ent, LOCAL, Manual } from './sim/sim';
 import { Cmd, applyCmd, validCmd, simHash } from './sim/commands';
 import { Online, WorldLink, OnlineUser } from './net/online';
@@ -94,11 +95,11 @@ export class Engine {
   constructor() {
     this.sim = Sim.newGame();
     try {
-      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+      const s = JSON.parse(ls.get(SETTINGS_KEY) || 'null');
       if (s) this.settings = { ...this.settings, ...s };
     } catch { /* egal */ }
     // Auf Handys standardmäßig etwas sparsamer
-    if (!localStorage.getItem(SETTINGS_KEY) && /Mobi|Android/i.test(navigator.userAgent)) this.settings.quality = 1;
+    if (!ls.get(SETTINGS_KEY) && /Mobi|Android/i.test(navigator.userAgent)) this.settings.quality = 1;
   }
 
   // ---------------------------------------------------------------- Abo für React
@@ -532,7 +533,7 @@ export class Engine {
 
   setSettings(s: Partial<Settings>) {
     this.settings = { ...this.settings, ...s };
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
+    ls.set(SETTINGS_KEY, JSON.stringify(this.settings));
     if (s.quality !== undefined) this.r?.setQuality(QUALITIES[s.quality]);
     this.emit();
   }

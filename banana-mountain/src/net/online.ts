@@ -4,6 +4,7 @@
  *  - Freunde, Bestenliste, Fabriken speichern/laden (Datenbank-Funktionen)
  *  - Echtzeit-Kanäle: „Lobby“ (wer ist online?) und ein Kanal pro Fabrik
  */
+import { ls } from '../storage/local';
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import type { SaveData } from '../sim/sim';
 
@@ -48,12 +49,12 @@ export class Online {
 
   // ---------------------------------------------------------------- Konto
   async resume(): Promise<Me | null> {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = ls.get(TOKEN_KEY);
     if (!token) return null;
     try {
       const me = await this.rpc<Me | null>('bm_session', { p_token: token });
       if (me) this.me = me;
-      else localStorage.removeItem(TOKEN_KEY);
+      else ls.del(TOKEN_KEY);
       return me;
     } catch {
       return null;
@@ -64,13 +65,13 @@ export class Online {
     const res = await this.rpc<Me & { error?: string }>(register ? 'bm_register' : 'bm_login', { p_name: name, p_pass: pass });
     if (res.error) throw new Error(res.error);
     this.me = res;
-    localStorage.setItem(TOKEN_KEY, res.token);
+    ls.set(TOKEN_KEY, res.token);
     return res;
   }
 
   async logout() {
     if (this.me) await this.rpc('bm_logout', { p_token: this.me.token }).catch(() => {});
-    localStorage.removeItem(TOKEN_KEY);
+    ls.del(TOKEN_KEY);
     await this.leaveLobby();
     this.me = null;
     this.friends = [];

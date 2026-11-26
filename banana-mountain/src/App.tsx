@@ -11,6 +11,7 @@ import { IconCrate, IconClose } from './ui/Icons';
 import { sfx } from './ui/sound';
 import { StartScreen, FriendsModal, PlayersBar, ChatBox } from './ui/OnlineUI';
 
+export const SOLO = import.meta.env.VITE_SOLO === '1';
 const engine = new Engine();
 (window as unknown as { __bm: Engine }).__bm = engine;
 
@@ -27,6 +28,11 @@ export default function App() {
     let alive = true;
     if (!canvas.current) return;
     engine.attach(canvas.current);
+    // Solo-Version (ohne Server): direkt offline starten
+    if (SOLO) {
+      engine.startOffline().then(() => { if (alive) setReady(true); });
+      return () => { alive = false; engine.detach(); };
+    }
     // Angemeldet geblieben? Dann direkt in die eigene Fabrik
     engine.net.resume().then(async (me) => {
       if (!alive) return;
