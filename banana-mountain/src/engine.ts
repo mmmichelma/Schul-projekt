@@ -2,6 +2,8 @@
  * Engine: verbindet Simulation, 3D-Darstellung, Eingabe und Benutzeroberfläche.
  */
 import { ls } from './storage/local';
+import { startMusic, setVolumes, setFactoryActivity } from './ui/music';
+import { sfx } from './ui/sound';
 import { Sim, Blueprint, rotatedSize, Ent, LOCAL, Manual } from './sim/sim';
 import { Cmd, applyCmd, validCmd, simHash } from './sim/commands';
 import { Online, WorldLink, OnlineUser } from './net/online';
@@ -23,7 +25,23 @@ interface Pointer { x: number; y: number; sx: number; sy: number; type: string; 
 type Gesture = 'none' | 'pending' | 'pan' | 'rotate' | 'box' | 'beltDrag' | 'demolishBox' | 'place' | 'pinch';
 
 export interface Toast { id: number; text: string; kind: 'info' | 'good' | 'bad' }
-export interface Settings { quality: number; showFps: boolean }
+export interface Settings {
+  quality: number; showFps: boolean;
+  // Grafik
+  shadows: 'auto' | 'on' | 'off'; resScale: number; lodScale: number; fpsLimit: number; effects: boolean; fov: number;
+  // Audio
+  master: number; music: number; sfx: number; musicOn: boolean;
+  // Steuerung
+  sensitivity: number; invertY: boolean; runToggle: boolean;
+  // Spiel
+  hints: boolean; startView: 'walk' | 'build';
+}
+export const DEFAULT_SETTINGS: Settings = {
+  quality: 2, showFps: false, shadows: 'auto', resScale: 1, lodScale: 1, fpsLimit: 0, effects: true, fov: 42,
+  master: 0.8, music: 0.5, sfx: 0.8, musicOn: true, sensitivity: 1, invertY: false, runToggle: false,
+  hints: true, startView: 'walk',
+};
+export type View = 'walk' | 'build';
 
 const SETTINGS_KEY = 'banana-mountain-settings';
 
@@ -42,7 +60,15 @@ export class Engine {
   selectRect: { x0: number; y0: number; x1: number; y1: number } | null = null;
   icons: IconMap = {};
   fps = 0;
-  settings: Settings = { quality: 2, showFps: false };
+  settings: Settings = { ...DEFAULT_SETTINGS };
+  // ---------------------------------------------------------------- Laufen
+  view: View = 'walk';
+  player = { x: 59.5, z: 85, y: 0, vx: 0, vz: 0, vy: 0, yaw: Math.PI / 2, speed: 0, air: false };
+  joy = { x: 0, y: 0 };      // Touch-Joystick
+  running = false;
+  private lastAvatarSend = 0;
+  private lastRender = 0;
+  private activityTimer = 0;
   lastSaved = 0;
   loaded = false;
 
@@ -358,7 +384,13 @@ export class Engine {
   attach(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.r = new GameRenderer(canvas, this.sim);
-    this.r.setQuality(QUALITIES[this.settings.quality]);
+    this.applySettings();
+    this.r.player.onStep = () => sfx.step();
+    this.setView(this.settings.startView);
+    // Musik startet beim ersten Klick/Tastendruck (Browser erlauben vorher keinen Ton)
+    const startAudio = () => { startMusic(); window.removeEventListener('pointerdown', startAudio); window.removeEventListener('keydown', startAudio); };
+    window.addEventListener('pointerdown', startAudio);
+    window.addEventListener('keydown', startAudio);
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       this.r!.resize(rect.width, rect.height);
@@ -401,10 +433,26 @@ export class Engine {
   private loop = (now: number) => {
     this.raf = requestAnimationFrame(this.loop);
     // Große Pausen (Tab im Hintergrund) werden NICHT nachgeholt – kein Offline-Farmen
+    // Bildraten-Begrenzung aus den Einstellungen
+    const lim = this.settings.fpsLimit;
+    if (lim && now - this.lastRender < 1000 / lim - 2) return;
+    this.lastRender = now;
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.stepSim(dt);
-    this.keyboardCamera(dt);
+    if (this.view === 'walk') this.updateWalk(dt);
+    else {
+      this.keyboardCamera(dt);
+      const p = this.player;
+      this.r?.updatePlayer(dt, p.x, p.y, p.z, p.yaw, 0, false, this.myManual().slots.length > 0, true);
+    }
+    this.activityTimer += dt;
+    if (this.activityTimer > 1) {
+      this.activityTimer = 0;
+      let n = 0;
+      for (const e of this.sim.ents.values()) if (e.kind === 'building' && e.status === 'working') n++;
+      setFactoryActivity(n / 30);
+    }
     if (this.r && this.mode !== 'offline') {
       const now = performance.now();
       for (const [id, c] of this.cursors) if (now - c.t > 6000) this.cursors.delete(id);
@@ -534,8 +582,130 @@ export class Engine {
   setSettings(s: Partial<Settings>) {
     this.settings = { ...this.settings, ...s };
     ls.set(SETTINGS_KEY, JSON.stringify(this.settings));
-    if (s.quality !== undefined) this.r?.setQuality(QUALITIES[s.quality]);
+    this.applySettings();
     this.emit();
+  }
+
+  resetSettings() { this.setSettings({ ...DEFAULT_SETTINGS }); }
+
+  private applySettings() {
+    const s = this.settings;
+    if (this.r) {
+      this.r.setTuning({ resScale: s.resScale, lodScale: s.lodScale, shadows: s.shadows, effects: s.effects }, s.fov);
+      this.r.setQuality(QUALITIES[s.quality]);
+    }
+    setVolumes({ master: s.master, music: s.music, sfx: s.sfx, musicOn: s.musicOn });
+    this.running = s.runToggle;
+  }
+
+  // ---------------------------------------------------------------- Laufen & Ansicht
+  setView(v: View) {
+    this.view = v;
+    const r = this.r;
+    if (!r) return;
+    const c = r.cam;
+    c.follow = v === 'walk';
+    if (v === 'walk') {
+      c.dist = 7.5; c.pitch = 0.32;
+      c.tx = this.player.x; c.tz = this.player.z; c.ty = this.player.y;
+    } else {
+      c.dist = 40; c.pitch = 0.95;
+    }
+    this.emit();
+  }
+  toggleView() { this.setView(this.view === 'walk' ? 'build' : 'walk'); }
+
+  // Kann die Figur hier stehen? (Gebäude blockieren, Bänder und Logistik nicht)
+  private blocked(x: number, z: number, fromY: number): boolean {
+    const R = 0.28;
+    for (const [dx, dz] of [[-R, -R], [R, -R], [-R, R], [R, R]]) {
+      const tx = Math.floor(x + dx), tz = Math.floor(z + dz);
+      if (tx < 0 || tz < 0 || tx >= 128 || tz >= 112) return true;
+      const e = this.sim.entAt(tx, tz);
+      if (e && e.kind === 'building' && BUILDINGS[e.type].category !== 'logistic') return true;
+      if (this.r!.groundHeight(x + dx, z + dz) - fromY > 0.9) return true; // zu steil
+    }
+    return false;
+  }
+
+  private updateWalk(dt: number) {
+    const r = this.r!;
+    const p = this.player;
+    const c = r.cam;
+    const k = this.keys;
+    const fx = -Math.sin(c.yaw), fz = -Math.cos(c.yaw);
+    const rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw);
+    let ix = 0, iz = 0;
+    if (k.has('w') || k.has('arrowup')) { ix += fx; iz += fz; }
+    if (k.has('s') || k.has('arrowdown')) { ix -= fx; iz -= fz; }
+    if (k.has('d') || k.has('arrowright')) { ix += rx; iz += rz; }
+    if (k.has('a') || k.has('arrowleft')) { ix -= rx; iz -= rz; }
+    ix += rx * this.joy.x - fx * this.joy.y;
+    iz += rz * this.joy.x - fz * this.joy.y;
+    const len = Math.hypot(ix, iz);
+    if (len > 1) { ix /= len; iz /= len; }
+    const run = this.running !== (k.has('shift'));
+    const maxSpeed = run ? 8 : 4.2;
+    const tvx = ix * maxSpeed, tvz = iz * maxSpeed;
+    const a = 1 - Math.exp(-(p.air ? 3 : 12) * dt);
+    p.vx += (tvx - p.vx) * a;
+    p.vz += (tvz - p.vz) * a;
+    // Förderbänder nehmen dich mit
+    let bx = 0, bz = 0;
+    const under = this.sim.entAt(Math.floor(p.x), Math.floor(p.z));
+    if (!p.air && under && under.kind === 'belt') {
+      const sp = BELT_TIERS[under.tier].speed;
+      bx = DX[under.dir] * sp; bz = DY[under.dir] * sp;
+    }
+    const mx = (p.vx + bx) * dt, mz = (p.vz + bz) * dt;
+    if (!this.blocked(p.x + mx, p.z, p.y)) p.x += mx;
+    if (!this.blocked(p.x, p.z + mz, p.y)) p.z += mz;
+    // Schwerkraft & Boden
+    const ground = r.groundHeight(p.x, p.z);
+    p.vy -= 22 * dt;
+    p.y += p.vy * dt;
+    if (p.y <= ground || (!p.air && ground - p.y < 0.9 && p.y - ground < 0.25)) {
+      if (p.air && p.vy < -5) sfx.land();
+      p.y = ground;
+      p.vy = 0;
+      p.air = false;
+    } else if (p.y > ground + 0.05) {
+      p.air = true;
+    }
+    p.speed = Math.hypot(p.vx, p.vz);
+    if (p.speed > 0.3) {
+      const target = Math.atan2(-p.vz, p.vx);
+      let d = target - p.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      p.yaw += d * (1 - Math.exp(-12 * dt));
+    }
+    // Kamera folgt weich
+    c.tx += (p.x - c.tx) * (1 - Math.exp(-14 * dt));
+    c.tz += (p.z - c.tz) * (1 - Math.exp(-14 * dt));
+    c.ty += (p.y - c.ty) * (1 - Math.exp(-8 * dt));
+    r.updatePlayer(dt, p.x, p.y, p.z, p.yaw, p.speed, p.air, this.myManual().slots.length > 0, true);
+    // Mitspieler sehen dich laufen
+    const now = performance.now();
+    if (this.link && this.net.me && this.players.length > 1 && now - this.lastAvatarSend > 100) {
+      this.lastAvatarSend = now;
+      this.link.send('cursor', { pid: this.pid, name: this.net.me.name, x: p.x, z: p.z, y: p.y, yaw: p.yaw, walk: true, hold: this.myManual().slots.length > 0 });
+    }
+  }
+
+  jump() {
+    if (this.view !== 'walk' || this.player.air) return;
+    this.player.vy = 7.5;
+    this.player.air = true;
+    sfx.jump();
+  }
+
+  // Banane in der Nähe der Figur greifen
+  grabNear() {
+    const p = this.player;
+    const tile = this.sim.nearestPileTile(Math.floor(p.x), Math.floor(p.z), 3);
+    if (tile < 0) { this.toast('Geh näher an den Bananenberg, um eine Banane zu nehmen.', 'bad'); return; }
+    if (this.grabFromPile(tile)) { this.r?.player.grab(); sfx.grab(); }
   }
 
   // ---------------------------------------------------------------- Werkzeuge & Aktionen
@@ -769,9 +939,13 @@ export class Engine {
     }
     const moved = p ? Math.hypot(p.x - p.sx, p.y - p.sy) : 0;
     if (this.gesture === 'rotate' && prev && p) {
-      this.r.rotate(-(p.x - prev.x) * 0.006, (p.y - prev.y) * 0.004);
+      const sens = this.settings.sensitivity;
+      const inv = this.settings.invertY ? -1 : 1;
+      this.r.rotate(-(p.x - prev.x) * 0.006 * sens, (p.y - prev.y) * 0.004 * sens * inv * (this.view === 'walk' ? 1.2 : 1));
       return;
     }
+    // Im Laufen-Modus dreht Ziehen die Kamera (statt sie zu verschieben)
+    if (this.view === 'walk' && this.gesture === 'pending' && moved > 6) this.gesture = 'rotate';
     if ((this.gesture === 'pending' && moved > 6) || (this.gesture === 'place' && p && p.type !== 'mouse' && moved > 14)) this.gesture = 'pan';
     if (this.gesture === 'pan') {
       const gp = this.r.groundPoint(e.clientX, e.clientY);
@@ -852,6 +1026,12 @@ export class Engine {
     }
     const tile = r.pickPile(e.clientX, e.clientY);
     if (tile >= 0) {
+      if (this.view === 'walk') {
+        const tx = tile % 128 + 0.5, tz = Math.floor(tile / 128) + 0.5;
+        if (Math.hypot(tx - this.player.x, tz - this.player.z) > 6) { this.toast('Zu weit weg – lauf näher an den Berg.', 'bad'); return; }
+        if (this.grabFromPile(tile)) { r.player.grab(); sfx.grab(); }
+        return;
+      }
       this.grabFromPile(tile);
       return;
     }
@@ -899,11 +1079,15 @@ export class Engine {
   private onKey(e: KeyboardEvent, down: boolean) {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+    if (this.view === 'walk' && k === 'e') { if (down && !e.repeat) this.grabNear(); return; }
+    if (this.view === 'walk' && k === ' ') { e.preventDefault(); if (down) this.jump(); return; }
+    if (['w', 'a', 's', 'd', 'q', 'e', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
       if (down) this.keys.add(k); else this.keys.delete(k);
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       return;
     }
     if (!down) return;
+    if (k === 'v' && !(e.ctrlKey || e.metaKey)) { this.toggleView(); return; }
     if (k === 'r') this.rotateTool();
     else if (k === 'escape') { this.setTool({ kind: 'select' }); this.select([]); }
     else if (k === 'delete' || k === 'backspace') this.demolishSelection();

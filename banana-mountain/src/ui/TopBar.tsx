@@ -1,9 +1,9 @@
 import type { Engine } from '../engine';
 import { TOTAL, PHASES } from '../sim/defs';
 import { fmtInt, fmtNum, fmtPct, formatMoney } from './format';
-import { IconCoin, IconBanana, IconGauge, IconBolt, IconChart, IconMenu, IconUsers } from './Icons';
+import { IconCoin, IconBanana, IconGauge, IconBolt, IconChart, IconMenu, IconUsers, IconGear, IconWalk, IconMap } from './Icons';
 
-export function TopBar({ engine, onStats, onMenu, onFriends }: { engine: Engine; onStats: () => void; onMenu: () => void; onFriends: () => void }) {
+export function TopBar({ engine, onStats, onMenu, onFriends, onSettings }: { engine: Engine; onStats: () => void; onMenu: () => void; onFriends: () => void; onSettings: () => void }) {
   const sim = engine.sim;
   const r = sim.rates();
   const progress = sim.stats.sold / TOTAL;
@@ -29,6 +29,9 @@ export function TopBar({ engine, onStats, onMenu, onFriends }: { engine: Engine;
       </div>
       <div className="top-actions">
         {engine.settings.showFps && <span className="fps">{engine.fps} FPS · {engine.r?.drawCalls ?? 0} DC</span>}
+        <button className={'icon-btn view-btn' + (engine.view === 'walk' ? ' walk' : '')} onClick={() => engine.toggleView()} title="Ansicht wechseln (V)">
+          {engine.view === 'walk' ? <><IconMap /><span className="hide-sm">Bau-Ansicht</span></> : <><IconWalk /><span className="hide-sm">Laufen</span></>}
+        </button>
         {engine.mode !== 'offline' && (
           <button className="icon-btn" onClick={onFriends} title="Freunde">
             <IconUsers /><span className="hide-sm">Freunde</span>
@@ -36,6 +39,7 @@ export function TopBar({ engine, onStats, onMenu, onFriends }: { engine: Engine;
           </button>
         )}
         <button className="icon-btn" onClick={onStats} title="Statistik"><IconChart /><span className="hide-sm">Statistik</span></button>
+        <button className="icon-btn" onClick={onSettings} title="Einstellungen"><IconGear /></button>
         <button className="icon-btn" onClick={onMenu} title="Menü"><IconMenu /><span className="hide-sm">Menü</span></button>
       </div>
     </header>

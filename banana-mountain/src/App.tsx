@@ -10,6 +10,8 @@ import { stageValue } from './sim/sim';
 import { IconCrate, IconClose } from './ui/Icons';
 import { sfx } from './ui/sound';
 import { StartScreen, FriendsModal, PlayersBar, ChatBox } from './ui/OnlineUI';
+import { SettingsModal } from './ui/Settings';
+import { TouchControls } from './ui/Touch';
 
 export const SOLO = import.meta.env.VITE_SOLO === '1';
 const engine = new Engine();
@@ -18,7 +20,7 @@ const engine = new Engine();
 export default function App() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
-  const [modal, setModal] = useState<'none' | 'stats' | 'menu' | 'friends'>('none');
+  const [modal, setModal] = useState<'none' | 'stats' | 'menu' | 'friends' | 'settings'>('none');
   const [needLogin, setNeedLogin] = useState(false);
   const [endSeen, setEndSeen] = useState(false);
   const [hideHint, setHideHint] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export default function App() {
   }, []);
 
   const sim = engine.sim;
-  const hint = ready ? hintFor(engine) : null;
+  const hint = ready && engine.settings.hints ? hintFor(engine) : null;
   const salvage = sim.salvage;
 
   return (
@@ -72,7 +74,8 @@ export default function App() {
       )}
       {ready && (
         <>
-          <TopBar engine={engine} onStats={() => setModal('stats')} onMenu={() => setModal('menu')} onFriends={() => setModal('friends')} />
+          <TopBar engine={engine} onStats={() => setModal('stats')} onMenu={() => setModal('menu')} onFriends={() => setModal('friends')} onSettings={() => setModal('settings')} />
+          <TouchControls engine={engine} />
           <PlayersBar engine={engine} />
           <ChatBox engine={engine} />
           {hint && hint !== hideHint && (
@@ -98,8 +101,9 @@ export default function App() {
             {engine.toasts.map((t) => <div key={t.id} className={'toast ' + t.kind}>{t.text}</div>)}
           </div>
           {modal === 'stats' && <StatsModal engine={engine} onClose={() => setModal('none')} />}
-          {modal === 'menu' && <MenuModal engine={engine} onClose={() => setModal('none')} onLogout={() => { setModal('none'); setReady(false); engine.logout().then(() => setNeedLogin(true)); }} />}
+          {modal === 'menu' && <MenuModal engine={engine} onClose={() => setModal('none')} onSettings={() => setModal('settings')} onLogout={() => { setModal('none'); setReady(false); engine.logout().then(() => setNeedLogin(true)); }} />}
           {modal === 'friends' && <FriendsModal engine={engine} onClose={() => setModal('none')} />}
+          {modal === 'settings' && <SettingsModal engine={engine} onClose={() => setModal('none')} />}
           {sim.finished && !endSeen && <EndScreen engine={engine} onClose={() => setEndSeen(true)} />}
         </>
       )}

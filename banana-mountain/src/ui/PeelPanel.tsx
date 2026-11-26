@@ -18,7 +18,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
   const hands = engine.myHands();
   // Auf kleinen Bildschirmen weicht der Schälbereich der Bauleiste aus
   const small = typeof window !== 'undefined' && window.innerWidth < 640;
-  const collapsed = !open || (small && (engine.buildMenuOpen || engine.tool.kind !== 'select' || engine.selection.length > 0));
+  const collapsed = !open || (small && (engine.buildMenuOpen || engine.tool.kind !== 'select' || engine.selection.length > 0 || (engine.view === 'walk' && !engine.myManual().slots.length)));
 
   useEffect(() => {
     if (collapsed || tab !== 'peel' || !canvas.current) return;

@@ -70,10 +70,9 @@ export function StatsModal({ engine, onClose }: { engine: Engine; onClose: () =>
   );
 }
 
-export function MenuModal({ engine, onClose, onLogout }: { engine: Engine; onClose: () => void; onLogout: () => void }) {
+export function MenuModal({ engine, onClose, onLogout, onSettings }: { engine: Engine; onClose: () => void; onLogout: () => void; onSettings: () => void }) {
   const file = useRef<HTMLInputElement>(null);
   const [confirm, setConfirm] = useState(false);
-  const [muted, setM] = useState(isMuted());
   return (
     <Modal title="Menü" onClose={onClose}>
       {engine.mode !== 'offline' && engine.net.me && (
@@ -94,24 +93,7 @@ export function MenuModal({ engine, onClose, onLogout }: { engine: Engine; onClo
           ? <button className="btn danger" onClick={() => setConfirm(true)}>Neues Spiel starten …</button>
           : <div className="confirm"><span>Wirklich? Die aktuelle Fabrik wird gelöscht.</span><button className="btn danger" onClick={() => { engine.newGame(); onClose(); }}>Ja, neu starten</button><button className="btn ghost" onClick={() => setConfirm(false)}>Abbrechen</button></div>}
       </div>
-      <h4>Grafik</h4>
-      <div className="seg wide">
-        {QUALITIES.map((q, i) => (
-          <button key={q.name} className={engine.settings.quality === i ? 'active' : ''} onClick={() => engine.setSettings({ quality: i })}>{q.name}</button>
-        ))}
-      </div>
-      <label className="toggle"><input type="checkbox" checked={engine.settings.showFps} onChange={(e) => engine.setSettings({ showFps: e.target.checked })} /> FPS anzeigen</label>
-      <button className="btn ghost" onClick={() => { setMuted(!muted); setM(!muted); }}>{muted ? <IconMute /> : <IconSound />} Töne {muted ? 'aus' : 'an'}</button>
-      <h4>Steuerung</h4>
-      <ul className="help">
-        <li><b>Linke Maus ziehen</b> – Kamera verschieben · <b>Rechte Maus</b> – drehen · <b>Mausrad</b> – zoomen</li>
-        <li><b>WASD / Pfeile</b> verschieben, <b>Q / E</b> drehen</li>
-        <li><b>Klick auf den Berg</b> – Banane nehmen (oder <b>Leertaste</b>)</li>
-        <li><b>R</b> drehen · <b>B</b> Förderband · <b>X</b> Abriss · <b>Esc</b> abbrechen</li>
-        <li><b>Shift + Ziehen</b> – mehrere auswählen · <b>Strg+C / Strg+V</b> – Linie kopieren</li>
-        <li><b>U</b> Auswahl verbessern · <b>Entf</b> abreißen</li>
-        <li>Handy/Tablet: ein Finger verschiebt, zwei Finger zoomen & drehen</li>
-      </ul>
+      <button className="btn ghost wide-btn" onClick={() => { onClose(); onSettings(); }}>Einstellungen (Grafik, Audio, Steuerung)</button>
       <p className="note">{engine.mode === 'guest' ? 'Der Besitzer der Fabrik speichert automatisch.' : engine.mode === 'host' ? 'Online gespeichert' : 'Automatisch gespeichert'} {engine.mode !== 'guest' ? (engine.lastSaved ? ` um ${new Date(engine.lastSaved).toLocaleTimeString('de-DE')}` : ' –') : ''}. Wenn das Spiel geschlossen ist, steht die Fabrik still.</p>
     </Modal>
   );
@@ -159,7 +141,10 @@ export function hintFor(engine: Engine): string | null {
     else if (BUILDINGS[e.type].category === 'collector') collectors++;
     else if (BUILDINGS[e.type].category === 'machine') machines++;
   }
-  if (sim.stats.sold === 0 && !slots.length) return 'Klicke auf den gelben Bananenberg, um deine erste Banane zu nehmen.';
+  const walk = engine.view === 'walk';
+  if (sim.stats.sold === 0 && !slots.length) return walk
+    ? 'Lauf mit WASD zum gelben Bananenberg und drück E (oder klick auf den Berg), um eine Banane zu nehmen. V wechselt zur Bau-Ansicht.'
+    : 'Klicke auf den gelben Bananenberg, um deine erste Banane zu nehmen.';
   if (sim.stats.sold === 0 && slots.some((s) => s.mask !== 7)) return 'Ziehe im Schälbereich die Schale nach unten – drei Streifen.';
   if (sim.stats.sold === 0) return 'Geschält! Klicke auf „Verkaufen“ – das bringt 3 $.';
   if (!collectors && sim.money < 50) return `Weiter schälen! Bei 50 $ kannst du deinen ersten Greifarm kaufen. (Tipp: „Werkstatt“ im Schälbereich)`;

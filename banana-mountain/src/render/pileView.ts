@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { MAP_W, MAP_H } from '../sim/defs';
 import { Sim, pileHeight, tileIndex } from '../sim/sim';
-import { bananaGeometry, bananaPileTexture } from './assets';
+import { bananaGeometry, bananaBunchGeometry, bananaPileTexture } from './assets';
 
 const CHUNK = 8;
 const MAX_PER_TILE = 5;
@@ -30,7 +30,8 @@ function bananasForCount(c: number) {
 interface Chunk {
   cx: number;
   cy: number;
-  mesh: THREE.InstancedMesh;
+  mesh: THREE.InstancedMesh;   // einzelne Bananen
+  bunch: THREE.InstancedMesh;  // Bananenbüschel
   dirty: boolean;
   center: THREE.Vector3;
 }
@@ -47,7 +48,8 @@ export class PileView {
   private chunkByKey = new Map<number, Chunk>();
   private normalsDirty = false;
   private normalsTimer = 0;
-  private bananaGeo = bananaGeometry({ len: 0.95, radius: 0.11, bend: 0.24, seg: 7 });
+  private bananaGeo = bananaGeometry({ len: 0.95, radius: 0.12, bend: 0.24, seg: 11 });
+  private bunchGeo = bananaBunchGeometry(4, { len: 0.85, radius: 0.11, bend: 0.22, seg: 9 });
   private bananaMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 });
   lodDistance = 95;
   instancesVisible = true;
@@ -59,7 +61,7 @@ export class PileView {
 
   dispose() {
     this.geo.dispose();
-    for (const c of this.chunks) c.mesh.dispose();
+    for (const c of this.chunks) { c.mesh.dispose(); c.bunch.dispose(); }
     this.group.clear();
   }
 
@@ -113,13 +115,20 @@ export class PileView {
     // Chunks mit einzelnen Bananen
     for (let cy = Math.floor(this.y0 / CHUNK); cy <= Math.floor(this.y1 / CHUNK); cy++) {
       for (let cx = Math.floor(this.x0 / CHUNK); cx <= Math.floor(this.x1 / CHUNK); cx++) {
-        const mesh = new THREE.InstancedMesh(this.bananaGeo, this.bananaMat, CHUNK * CHUNK * MAX_PER_TILE);
-        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CHUNK * CHUNK * MAX_PER_TILE * 3), 3);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.frustumCulled = false;
-        const c: Chunk = { cx, cy, mesh, dirty: true, center: new THREE.Vector3((cx + 0.5) * CHUNK, 4, (cy + 0.5) * CHUNK) };
+        const make = (geo: THREE.BufferGeometry) => {
+          const m = new THREE.InstancedMesh(geo, this.bananaMat, CHUNK * CHUNK * MAX_PER_TILE);
+          m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CHUNK * CHUNK * MAX_PER_TILE * 3), 3);
+          m.castShadow = true;
+          m.receiveShadow = true;
+          m.frustumCulled = false;
+          m.count = 0;
+          return m;
+        };
+        const mesh = make(this.bananaGeo);
+        const bunch = make(this.bunchGeo);
+        this.group.add(bunch);
+        const c: Chunk = { cx, cy, mesh, bunch, dirty: true, center: new THREE.Vector3((cx + 0.5) * CHUNK, 4, (cy + 0.5) * CHUNK) };
         this.chunks.push(c);
         this.chunkByKey.set(cy * 1000 + cx, c);
         this.group.add(mesh);
@@ -173,7 +182,7 @@ export class PileView {
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
     const color = new THREE.Color();
-    let n = 0;
+    let n = 0, nb = 0;
     const x0 = c.cx * CHUNK, y0 = c.cy * CHUNK;
     for (let y = y0; y < y0 + CHUNK; y++) {
       for (let x = x0; x < x0 + CHUNK; x++) {
@@ -191,19 +200,22 @@ export class PileView {
           const sc = 0.9 + hash(ti, b * 7 + 6) * 0.35;
           s.set(sc, sc, sc);
           m.compose(p, q, s);
-          c.mesh.setMatrixAt(n, m);
           const tone = hash(ti, b * 7 + 8);
-          if (tone < 0.08) color.setRGB(0.82, 0.95, 0.55);        // noch etwas grün
-          else if (tone < 0.14) color.setRGB(0.95, 0.78, 0.55);   // reif mit Flecken
-          else color.setRGB(0.95 + tone * 0.05, 0.92 + tone * 0.08, 0.85 + tone * 0.15);
-          c.mesh.setColorAt(n, color);
-          n++;
+          if (tone < 0.08) color.setRGB(0.85, 1, 0.7);            // noch etwas grün
+          else if (tone < 0.15) color.setRGB(1, 0.85, 0.65);      // sehr reif
+          else color.setRGB(0.94 + tone * 0.06, 0.94 + tone * 0.06, 0.94 + tone * 0.06);
+          // Auf dicken Stellen liegen ganze Büschel, am Rand einzelne Bananen
+          if (count >= 30 && b % 2 === 0) { c.bunch.setMatrixAt(nb, m); c.bunch.setColorAt(nb, color); nb++; }
+          else { c.mesh.setMatrixAt(n, m); c.mesh.setColorAt(n, color); n++; }
         }
       }
     }
     c.mesh.count = n;
-    c.mesh.instanceMatrix.needsUpdate = true;
-    if (c.mesh.instanceColor) c.mesh.instanceColor.needsUpdate = true;
+    c.bunch.count = nb;
+    for (const mm of [c.mesh, c.bunch]) {
+      mm.instanceMatrix.needsUpdate = true;
+      if (mm.instanceColor) mm.instanceColor.needsUpdate = true;
+    }
   }
 
   // Übernimmt geänderte Felder aus der Simulation
@@ -244,6 +256,7 @@ export class PileView {
       const vis = this.instancesVisible && c.center.distanceTo(camPos) < this.lodDistance;
       if (vis && !c.mesh.visible && c.dirty) this.rebuildChunk(c);
       c.mesh.visible = vis;
+      c.bunch.visible = vis;
     }
   }
 
@@ -255,6 +268,6 @@ export class PileView {
   // Einzelbananen werfen nur auf hoher Qualität Schatten (spart Leistung)
   setShadows(on: boolean, detailed = on) {
     this.mesh.castShadow = on;
-    for (const c of this.chunks) c.mesh.castShadow = detailed;
+    for (const c of this.chunks) { c.mesh.castShadow = detailed; c.bunch.castShadow = detailed; }
   }
 }

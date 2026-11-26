@@ -9,6 +9,7 @@ import { BeltView } from './beltView';
 import { Effects } from './effects';
 import { createModel, createGhost, Model, LAMP_MATS } from './models';
 import { floorTexture, wallTexture, hazardTexture, canvasTexture } from './assets';
+import { Character, nameSprite } from './character';
 
 export interface Quality {
   name: string;
@@ -43,7 +44,11 @@ export class GameRenderer {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
-  cam = { tx: PILE_CX, tz: PILE_CY + 22, dist: 82, yaw: 0, pitch: 0.82 };
+  cam = { tx: PILE_CX, tz: PILE_CY + 22, dist: 82, yaw: 0, pitch: 0.82, follow: false, ty: 0 };
+  // Spielfigur (Laufen-Modus)
+  player = new Character();
+  playerVisible = false;
+  private tuning = { resScale: 1, lodScale: 1, shadows: 'auto' as 'auto' | 'on' | 'off', effects: true };
   sim: Sim;
   quality = QUALITIES[2];
   private sun: THREE.DirectionalLight;
@@ -96,7 +101,8 @@ export class GameRenderer {
 
     this.buildHall();
     this.pile = new PileView(sim);
-    this.scene.add(this.pile.group, this.belts.group, this.fx.group, this.selLines, this.portGroup);
+    this.scene.add(this.pile.group, this.belts.group, this.fx.group, this.selLines, this.portGroup, this.player.root);
+    this.player.root.visible = false;
 
     // Vorschau-Objekte
     const arrowTex = canvasTexture(64, 64, (ctx) => {
@@ -215,9 +221,18 @@ export class GameRenderer {
     this.selKey = '';
   }
 
-  setQuality(q: Quality) {
-    this.quality = q;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixelRatio));
+  // Feineinstellungen aus dem Einstellungs-Menü
+  setTuning(t: Partial<GameRenderer['tuning']>, fov?: number) {
+    Object.assign(this.tuning, t);
+    if (fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    this.setQuality(this.quality);
+  }
+
+  setQuality(preset: Quality) {
+    this.quality = preset;
+    const t = this.tuning;
+    const q = { ...preset, shadows: t.shadows === 'auto' ? preset.shadows : t.shadows === 'on', lod: preset.lod * t.lodScale };
+    this.renderer.setPixelRatio(Math.max(0.4, Math.min(window.devicePixelRatio || 1, q.pixelRatio) * t.resScale));
     this.renderer.shadowMap.enabled = q.shadows;
     this.sun.castShadow = q.shadows;
     if (this.sun.shadow.mapSize.x !== q.shadowRes) {
@@ -226,6 +241,7 @@ export class GameRenderer {
       (this.sun.shadow as unknown as { map: null }).map = null;
     }
     this.pile.lodDistance = q.lod;
+    this.lodDist = q.lod;
     this.pile.setShadows(q.shadows, q.shadows && q.shadowRes >= 2048);
     this.scene.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
@@ -244,21 +260,45 @@ export class GameRenderer {
     this.cam.tx = Math.max(-5, Math.min(MAP_W + 5, this.cam.tx + dx));
     this.cam.tz = Math.max(-5, Math.min(MAP_H + 5, this.cam.tz + dz));
   }
-  zoom(f: number) { this.cam.dist = Math.max(7, Math.min(170, this.cam.dist * f)); }
+  zoom(f: number) {
+    this.cam.dist = this.cam.follow ? Math.max(2.5, Math.min(25, this.cam.dist * f)) : Math.max(7, Math.min(170, this.cam.dist * f));
+  }
   rotate(dyaw: number, dpitch: number) {
     this.cam.yaw += dyaw;
-    this.cam.pitch = Math.max(0.42, Math.min(1.48, this.cam.pitch + dpitch));
+    const lo = this.cam.follow ? -0.15 : 0.42;
+    this.cam.pitch = Math.max(lo, Math.min(1.48, this.cam.pitch + dpitch));
   }
+
+  // Höhe des Bodens: Hallenboden, Bananenberg oder Förderband
+  groundHeight(x: number, z: number): number {
+    let h = Math.max(0, this.pile.surfaceHeight(x, z));
+    const e = this.sim.entAt(Math.floor(x), Math.floor(z));
+    if (e && e.kind === 'belt') h = Math.max(h, 0.2);
+    else if (e && e.kind === 'building' && BUILDINGS[e.type].category === 'logistic') h = Math.max(h, 0.24);
+    return h;
+  }
+
+  lodDist = 95;
   focus(x: number, z: number) { this.cam.tx = x; this.cam.tz = z; }
 
   private updateCamera() {
     const c = this.cam;
     const h = Math.sin(c.pitch) * c.dist;
     const r = Math.cos(c.pitch) * c.dist;
-    this.camera.position.set(c.tx + Math.sin(c.yaw) * r, h, c.tz + Math.cos(c.yaw) * r);
-    this.camera.lookAt(c.tx, 0, c.tz);
+    if (c.follow) {
+      // Dritte-Person-Kamera hinter der Spielfigur
+      const ty = c.ty + 1.5;
+      let cy = ty + h;
+      const cx = c.tx + Math.sin(c.yaw) * r, cz = c.tz + Math.cos(c.yaw) * r;
+      cy = Math.max(cy, this.groundHeight(cx, cz) + 0.6);
+      this.camera.position.set(cx, cy, cz);
+      this.camera.lookAt(c.tx, ty, c.tz);
+    } else {
+      this.camera.position.set(c.tx + Math.sin(c.yaw) * r, h, c.tz + Math.cos(c.yaw) * r);
+      this.camera.lookAt(c.tx, 0, c.tz);
+    }
     // Sichtbarer Bereich (grob) für das Ausblenden entfernter Objekte
-    const reach = c.dist * (1.25 + (1.5 - c.pitch) * 0.9) + 6;
+    const reach = c.follow ? 95 : c.dist * (1.25 + (1.5 - c.pitch) * 0.9) + 6;
     this.viewRect = { x0: c.tx - reach, y0: c.tz - reach, x1: c.tx + reach, y1: c.tz + reach };
     // Schatten folgen der Kamera
     const s = Math.min(90, Math.max(22, c.dist * 0.95));
@@ -492,7 +532,7 @@ export class GameRenderer {
       const visible = e.x + e.w >= vr.x0 && e.x <= vr.x1 && e.y + e.h >= vr.y0 && e.y <= vr.y1;
       v.model.group.visible = visible;
       if (!visible) continue;
-      const far = v.center.distanceTo(camPos) > this.quality.lod * 1.3;
+      const far = v.center.distanceTo(camPos) > this.lodDist * 1.3;
       v.model.detail.visible = !far;
       v.model.lod.visible = far;
       v.model.lamp.material = LAMP_MATS[e.status];
@@ -511,7 +551,7 @@ export class GameRenderer {
         fill: def.category === 'storage' ? e.inBuf.length / cap : 0, target, filterStage: e.filter,
         outMask: e.outMask, tier: e.level - 1, prio: e.prio,
       });
-      if (e.status === 'working' && v.model.emitters.length && Math.random() < dt * 5) {
+      if (this.tuning.effects && e.status === 'working' && v.model.emitters.length && Math.random() < dt * 5) {
         for (const em of v.model.emitters) {
           const wp = em.getWorldPosition(new THREE.Vector3());
           this.fx.steam(wp, e.type === 'digger' ? '#555555' : '#ffffff');
@@ -530,6 +570,9 @@ export class GameRenderer {
       } else if (ev.t === 'manualGrab' && ev.tile !== undefined && ev.pid !== undefined && ev.pid !== this.myPid) {
         const cur = this.cursorViews.get(ev.pid);
         if (cur) this.fx.fly(this.pile.tileTop(ev.tile), cur.position.clone().setY(1.5), 0.5, 1.5);
+      } else if (ev.t === 'manualGrab' && ev.tile !== undefined && this.cam.follow) {
+        // Im Laufen-Modus fliegt die Banane in die Hand der Figur
+        this.fx.fly(this.pile.tileTop(ev.tile), this.player.root.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0.4, 0.8);
       } else if (ev.t === 'manualGrab' && ev.tile !== undefined) {
         // Fliegt zur Kamera (in den Schälbereich unten rechts)
         const to = new THREE.Vector3(0.72, -0.75, 0.5).unproject(this.camera);
@@ -555,44 +598,57 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // Mauszeiger der Mitspieler (farbiger Ring + Name)
-  setCursors(list: Map<string, { name: string; x: number; z: number }>) {
-    for (const [id, g] of this.cursorViews) {
-      if (!list.has(id)) { this.scene.remove(g); this.cursorViews.delete(id); }
+  // Mitspieler: als laufende Figur (Laufen-Modus) oder als farbiger Ring (Bau-Ansicht)
+  private remote = new Map<string, { g: THREE.Group; ring: THREE.Mesh; ch: Character; label: THREE.Sprite; last: THREE.Vector3; speed: number }>();
+  setCursors(list: Map<string, { name: string; x: number; z: number; y?: number; yaw?: number; walk?: boolean; hold?: boolean }>) {
+    for (const [id, r] of this.remote) {
+      if (!list.has(id)) { this.scene.remove(r.g); this.remote.delete(id); this.cursorViews.delete(id); }
     }
     for (const [id, c] of list) {
-      let g = this.cursorViews.get(id);
-      if (!g) {
+      let r = this.remote.get(id);
+      if (!r) {
         let h = 0;
         for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
         const color = new THREE.Color().setHSL((h % 360) / 360, 0.85, 0.6);
-        g = new THREE.Group();
+        const g = new THREE.Group();
         const ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 8, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true }));
         ring.position.y = 0.3;
         ring.renderOrder = 15;
-        const tex = canvasTexture(256, 64, (ctx) => {
-          ctx.fillStyle = 'rgba(15,18,24,0.85)';
-          ctx.fillRect(0, 0, 256, 64);
-          ctx.fillStyle = '#' + color.getHexString();
-          ctx.fillRect(0, 0, 10, 64);
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 34px Inter, Arial, sans-serif';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(c.name, 22, 34);
-        }, false);
-        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-        label.scale.set(2.4, 0.6, 1);
-        label.position.y = 1.6;
-        label.renderOrder = 16;
-        g.add(ring, label);
+        const ch = new Character({ shirt: '#' + color.getHexString(), vest: '#ff8a1f', pants: '#2c3a5c', skin: '#eab894', helmet: '#' + color.getHexString() });
+        const label = nameSprite(c.name, '#' + color.getHexString());
+        g.add(ring, ch.root, label);
         g.position.set(c.x, 0, c.z);
         this.scene.add(g);
+        r = { g, ring, ch, label, last: new THREE.Vector3(c.x, 0, c.z), speed: 0 };
+        this.remote.set(id, r);
         this.cursorViews.set(id, g);
       }
-      g.position.x += (c.x - g.position.x) * 0.25;
-      g.position.z += (c.z - g.position.z) * 0.25;
-      g.children[0].rotation.y += 0.03;
+      const before = r.g.position.clone();
+      r.g.position.x += (c.x - r.g.position.x) * 0.2;
+      r.g.position.z += (c.z - r.g.position.z) * 0.2;
+      r.g.position.y += ((c.walk ? c.y ?? 0 : 0) - r.g.position.y) * 0.2;
+      r.ring.visible = !c.walk;
+      r.ch.root.visible = !!c.walk;
+      r.label.position.y = c.walk ? 2.3 : 1.6;
+      r.ring.rotation.y += 0.03;
+      if (c.walk) {
+        r.speed += (before.distanceTo(r.g.position) * 60 - r.speed) * 0.2;
+        if (c.yaw !== undefined) r.ch.root.rotation.y = c.yaw;
+        r.ch.setHolding(!!c.hold);
+        r.ch.update(1 / 60, r.speed, false);
+      }
     }
+  }
+
+  // Spielfigur setzen (Position, Blickrichtung, Animation)
+  updatePlayer(dt: number, x: number, y: number, z: number, yaw: number, speed: number, air: boolean, holding: boolean, visible: boolean) {
+    const p = this.player;
+    p.root.visible = visible;
+    if (!visible) return;
+    p.root.position.set(x, y, z);
+    p.root.rotation.y = yaw;
+    p.setHolding(holding);
+    p.update(dt, speed, air);
   }
 
   // Bildschirmposition eines Weltpunkts (für HTML-Overlays)

@@ -42,50 +42,83 @@ export interface BananaOpts {
   stripes?: string; // Glasur-Streifen
 }
 
-/* Banane entlang x, gekrümmt in z, mit 5 Kanten wie eine echte Banane */
+/*
+ * Echte Bananenform: gebogener Körper mit 5 weichen Kanten, dicker in der Mitte,
+ * dunkle Blütenspitze vorne, schmaler Hals und Stiel mit braunem Schnittende hinten.
+ * Farben über Vertex-Farben: Gelb, zum Stiel hin grünlich, kleine braune Flecken.
+ */
 export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
   const len = o.len ?? 0.9, R = o.radius ?? 0.1, bend = o.bend ?? 0.22;
-  const seg = o.seg ?? 12, sides = o.sides ?? 5;
-  const body = new THREE.Color(o.body ?? '#ffd21f');
-  const tip = new THREE.Color(o.tip ?? '#4a3315');
-  const stem = new THREE.Color(o.stem ?? '#7a6a2a');
+  const seg = Math.max(10, o.seg ?? 16);
+  const radial = 12;
+  const plain = !!o.stripes || o.body !== undefined;
+  const body = new THREE.Color(o.body ?? '#ffd52e');
+  const ridge = body.clone().multiplyScalar(0.86);
+  const green = new THREE.Color(o.body ? o.body : '#c2cf3a');
+  const tip = new THREE.Color(o.tip ?? '#3b2712');
+  const stem = new THREE.Color(o.stem ?? '#8a9a3a');
+  const cut = new THREE.Color('#5a4320');
+  const speck = new THREE.Color('#7a4c1c');
   const stripes = o.stripes ? new THREE.Color(o.stripes) : null;
   const pos: number[] = [], col: number[] = [], idx: number[] = [];
-  const path = (t: number) => new THREE.Vector3((t - 0.5) * len, 0, bend * (1 - (2 * t - 1) ** 2) - bend * 0.5);
+  // Mittellinie: Bogen in der x-z-Ebene, leicht angehoben zur Mitte
+  const path = (t: number) => {
+    const u = 2 * t - 1;
+    return new THREE.Vector3((t - 0.5) * len, (1 - u * u) * bend * 0.25, bend * (1 - u * u) - bend * 0.5);
+  };
+  // Dicke entlang der Banane: rundes Ende vorne, bauchig, langer schmaler Hals zum Stiel
+  const thick = (t: number) => {
+    if (t < 0.05) return 0.35 + (t / 0.05) * 0.4;
+    if (t < 0.18) return 0.75 + ((t - 0.05) / 0.13) * 0.25;
+    if (t < 0.68) return 1;
+    if (t < 0.86) return 1 - ((t - 0.68) / 0.18) * 0.62;
+    return 0.38 - ((t - 0.86) / 0.14) * 0.1;
+  };
+  const rnd = (i: number) => { let h = Math.imul(i ^ 0x9e3779b9, 2654435761); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
   const up = new THREE.Vector3(0, 1, 0);
+  const c = new THREE.Color();
   for (let i = 0; i <= seg; i++) {
     const t = i / seg;
-    const c = path(t);
+    const ctr = path(t);
     const tan = path(Math.min(1, t + 0.01)).sub(path(Math.max(0, t - 0.01))).normalize();
     const side = new THREE.Vector3().crossVectors(tan, up).normalize();
-    let r = R * Math.pow(Math.sin(Math.PI * Math.min(0.97, Math.max(0.03, t))), 0.55);
-    if (t > 0.9) r *= 0.75; // Stiel dünner
-    let color = body;
-    if (t < 0.06) color = tip;
-    else if (t > 0.9) color = stem;
-    else if (stripes && Math.floor(t * 9) % 2 === 0) color = stripes;
-    for (let s = 0; s < sides; s++) {
-      const a = (s / sides) * Math.PI * 2;
-      const v = c.clone().addScaledVector(up, Math.cos(a) * r * 0.9).addScaledVector(side, Math.sin(a) * r);
+    const nrm = new THREE.Vector3().crossVectors(side, tan).normalize();
+    const r = R * thick(t);
+    for (let k = 0; k < radial; k++) {
+      const a = (k / radial) * Math.PI * 2;
+      // 5 weiche Kanten (nicht am Stiel)
+      const edge = t > 0.86 ? 0 : 0.07 * Math.cos(5 * a);
+      const rr = r * (1 + edge);
+      const v = ctr.clone().addScaledVector(nrm, Math.cos(a) * rr * 0.92).addScaledVector(side, Math.sin(a) * rr);
       pos.push(v.x, v.y, v.z);
-      col.push(color.r, color.g, color.b);
+      // Farbe
+      if (t < 0.035) c.copy(tip);
+      else if (t > 0.96) c.copy(cut);
+      else if (t > 0.86) c.copy(stem);
+      else {
+        c.copy(Math.cos(5 * a) > 0.93 && !plain ? ridge : body);
+        if (!plain && t > 0.6) c.lerp(green, Math.min(1, (t - 0.6) / 0.26) * 0.75);
+        if (!plain && t < 0.09) c.lerp(tip, (0.09 - t) / 0.09 * 0.6);
+        if (stripes && Math.floor(t * 9) % 2 === 0) c.copy(stripes);
+        if (!plain && rnd(i * 31 + k * 7) < 0.025) c.lerp(speck, 0.5);
+      }
+      col.push(c.r, c.g, c.b);
     }
   }
   for (let i = 0; i < seg; i++) {
-    for (let s = 0; s < sides; s++) {
-      const a = i * sides + s, b = i * sides + ((s + 1) % sides);
-      const c2 = a + sides, d = b + sides;
-      idx.push(a, c2, b, b, c2, d);
+    for (let k = 0; k < radial; k++) {
+      const a = i * radial + k, b = i * radial + ((k + 1) % radial);
+      idx.push(a, a + radial, b, b, a + radial, b + radial);
     }
   }
   // Enden schließen
-  for (const [ring, flip, color] of [[0, true, tip], [seg, false, stem]] as [number, boolean, THREE.Color][]) {
+  for (const [ring, flip, color] of [[0, true, tip], [seg, false, cut]] as [number, boolean, THREE.Color][]) {
     const center = path(ring / seg);
     const ci = pos.length / 3;
     pos.push(center.x, center.y, center.z);
     col.push(color.r, color.g, color.b);
-    for (let s = 0; s < sides; s++) {
-      const a = ring * sides + s, b = ring * sides + ((s + 1) % sides);
+    for (let k = 0; k < radial; k++) {
+      const a = ring * radial + k, b = ring * radial + ((k + 1) % radial);
       if (flip) idx.push(ci, b, a); else idx.push(ci, a, b);
     }
   }
@@ -95,6 +128,31 @@ export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
+}
+
+/* Ein Bananenbüschel („Hand“): mehrere Bananen, deren Stiele sich in einer Krone treffen */
+export function bananaBunchGeometry(n = 4, o: BananaOpts = {}): THREE.BufferGeometry {
+  const len = o.len ?? 0.9;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < n; k++) {
+    const g = bananaGeometry({ ...o, seg: o.seg ?? 12 });
+    // Stielende (x = +len/2) liegt in der Krone; Bananen fächern sich auf
+    g.translate(-len / 2, 0, 0);
+    g.rotateY(Math.PI + (k - (n - 1) / 2) * 0.32);
+    g.rotateZ(-0.12);
+    g.translate(0, (k % 2) * 0.05, 0);
+    parts.push(g.toNonIndexed());
+  }
+  const crown = new THREE.CylinderGeometry(0.06, 0.08, 0.2, 8).rotateZ(Math.PI / 2).translate(0.05, 0.04, 0).toNonIndexed();
+  const cc = new THREE.Color('#6a7a2c');
+  const arr = new Float32Array(crown.attributes.position.count * 3);
+  for (let i = 0; i < crown.attributes.position.count; i++) { arr[i * 3] = cc.r; arr[i * 3 + 1] = cc.g; arr[i * 3 + 2] = cc.b; }
+  crown.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  crown.deleteAttribute('uv');
+  parts.push(crown);
+  const merged = mergeGeometries(parts)!;
+  merged.computeVertexNormals();
+  return merged;
 }
 
 function colorize(g: THREE.BufferGeometry, color: string): THREE.BufferGeometry {
@@ -116,7 +174,7 @@ export function stageVisuals(): StageVisual[] {
   const m = (rough: number, metal = 0, emissive = '#000000') => new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: rough, metalness: metal, emissive, emissiveIntensity: 0.25,
   });
-  const small = { len: 0.42, radius: 0.06, bend: 0.1, seg: 9 };
+  const small = { len: 0.52, radius: 0.075, bend: 0.13, seg: 12 };
   const slices = (() => {
     const parts: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 3; i++) {
@@ -309,32 +367,84 @@ export function beltTexture(accent: string) {
 }
 
 export function bananaPileTexture() {
-  return canvasTexture(512, 512, (ctx) => {
+  return canvasTexture(1024, 1024, (ctx) => {
     const r = rand(42);
-    ctx.fillStyle = '#e6b10f';
-    ctx.fillRect(0, 0, 512, 512);
-    for (let i = 0; i < 520; i++) {
-      const x = r() * 512, y = r() * 512, a = r() * Math.PI * 2, L = 34 + r() * 26;
+    ctx.fillStyle = '#7a5a10';
+    ctx.fillRect(0, 0, 1024, 1024);
+    // Eine Banane: Halbmond mit Kante, Lichtkante, brauner Spitze und grünlichem Stiel
+    const banana = (x: number, y: number, a: number, L: number, ripe: number) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(a);
-      const g = ctx.createLinearGradient(0, -8, 0, 8);
-      const tone = r();
-      g.addColorStop(0, tone < 0.15 ? '#d8d23a' : '#fff07a');
-      g.addColorStop(0.6, tone < 0.15 ? '#b9b520' : '#ffd21f');
-      g.addColorStop(1, '#c89300');
+      const W = L * 0.2;
+      // Schatten
+      ctx.fillStyle = 'rgba(40,25,0,0.45)';
+      ctx.beginPath();
+      ctx.moveTo(-L / 2 + 3, 4);
+      ctx.quadraticCurveTo(0, -L * 0.28 + 4, L / 2 + 3, 4);
+      ctx.quadraticCurveTo(0, -L * 0.28 + W * 2 + 4, -L / 2 + 3, 4);
+      ctx.fill();
+      // Körper
+      const g = ctx.createLinearGradient(0, -L * 0.25, 0, W);
+      const top = ripe < 0.12 ? '#e9ec7a' : '#fff27a';
+      const mid = ripe < 0.12 ? '#c9d23a' : ripe > 0.9 ? '#e9b52a' : '#ffd21f';
+      g.addColorStop(0, top);
+      g.addColorStop(0.55, mid);
+      g.addColorStop(1, '#b88a08');
       ctx.fillStyle = g;
-      ctx.strokeStyle = 'rgba(110,70,0,0.55)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(95,60,0,0.75)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(-L / 2, 0);
-      ctx.quadraticCurveTo(0, -L * 0.36, L / 2, 0);
-      ctx.quadraticCurveTo(0, -L * 0.16, -L / 2, 0);
+      ctx.quadraticCurveTo(0, -L * 0.3, L / 2, 0);
+      ctx.quadraticCurveTo(0, -L * 0.3 + W * 2, -L / 2, 0);
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#4a3315';
-      ctx.beginPath(); ctx.arc(-L / 2, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+      // Kante (Rippe)
+      ctx.strokeStyle = 'rgba(150,105,0,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-L / 2 + 6, -1);
+      ctx.quadraticCurveTo(0, -L * 0.3 + W * 0.9, L / 2 - 8, -1);
+      ctx.stroke();
+      // Glanz
+      ctx.strokeStyle = 'rgba(255,255,220,0.65)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-L / 4, -L * 0.1);
+      ctx.quadraticCurveTo(0, -L * 0.2, L / 4, -L * 0.1);
+      ctx.stroke();
+      // Flecken bei reifen Bananen
+      if (ripe > 0.7) {
+        ctx.fillStyle = 'rgba(110,65,10,0.6)';
+        for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.arc((r() - 0.5) * L * 0.6, -L * 0.1 + r() * W * 0.8, 1.2 + r() * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      }
+      // Spitze und Stiel
+      ctx.fillStyle = '#3a2610';
+      ctx.beginPath(); ctx.ellipse(-L / 2, 0, 3.2, 2.6, a, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#7a8a30';
+      ctx.fillRect(L / 2 - 2, -3, 9, 5);
+      ctx.fillStyle = '#4a3a18';
+      ctx.fillRect(L / 2 + 6, -3, 3, 5);
       ctx.restore();
+    };
+    // Mehrere Lagen, damit es wie ein Haufen aussieht
+    for (let layer = 0; layer < 3; layer++) {
+      const n = [260, 260, 200][layer];
+      for (let i = 0; i < n; i++) {
+        const x = r() * 1024, y = r() * 1024, a = r() * Math.PI * 2, L = 70 + r() * 40;
+        const ripe = r();
+        if (r() < 0.25) {
+          // Büschel aus 3–4 Bananen
+          const k = 3 + Math.floor(r() * 2);
+          for (let j = 0; j < k; j++) banana(x + Math.cos(a) * j * 9, y + Math.sin(a) * j * 9, a + (j - k / 2) * 0.12, L, ripe);
+        } else {
+          banana(x, y, a, L, ripe);
+        }
+        // nahtlos kachelbar: am Rand wiederholen
+        if (x < 60 || x > 964 || y < 60 || y > 964) banana((x + 512) % 1024 - (x > 512 ? 0 : 0), y, a, L, ripe);
+      }
     }
   });
 }
