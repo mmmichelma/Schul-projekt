@@ -67,12 +67,19 @@ export interface Building {
 export type Ent = Belt | Building;
 
 export interface ManualBanana { mask: number } // Bit 0..2 = Schalenstreifen abgezogen
+export interface Manual { slots: ManualBanana[]; up: Record<ManualUpgradeId, number>; grabAcc: number; peelAcc: number }
+export const LOCAL = 'me';
+export function newManual(): Manual {
+  return { slots: [], up: { finger: 0, strips: 0, hands: 0, tongs: 0, autosell: 0, autograb: 0, apprentice: 0 }, grabAcc: 0, peelAcc: 0 };
+}
+const EMPTY_MANUAL: Manual = Object.freeze(newManual()) as Manual;
 
 export interface SimEvent {
   t: 'grab' | 'sell' | 'manualGrab' | 'manualSell';
   tile?: number;
   id?: number;
   value?: number;
+  pid?: string;
 }
 
 export interface Stats {
@@ -193,12 +200,7 @@ export class Sim {
   money = 0;
   inFactory = 0;   // Bananen auf Bändern, in Maschinen, Lagern und der Bergungskiste
   salvage: Item[] = []; // Bananen aus abgerissenen Gebäuden – gehen nie verloren
-  manual: { slots: ManualBanana[]; up: Record<ManualUpgradeId, number>; grabAcc: number; peelAcc: number } = {
-    slots: [],
-    up: { finger: 0, strips: 0, hands: 0, tongs: 0, autosell: 0, autograb: 0, apprentice: 0 },
-    grabAcc: 0,
-    peelAcc: 0,
-  };
+  manuals: Record<string, Manual> = {};
   stats: Stats = {
     time: 0, revenue: 0, sold: 0, soldValue: 0, manualPeeledSold: 0, manualRawSold: 0, factorySold: 0,
     autoProcessedSold: 0, grabbed: 0, built: 0, maxMoney: 0, maxSoldRate: 0, maxGrabRate: 0, maxIncomeRate: 0, finishedAt: 0,
@@ -247,7 +249,8 @@ export class Sim {
       if (!this.pile[i]) continue;
       const x = i % MAP_W, y = (i / MAP_W) | 0;
       // Von unten außen nach innen – dort ist der Handbereich
-      const d = Math.hypot(x + 0.5 - PILE_CX, y + 0.5 - PILE_CY);
+      const ddx = x + 0.5 - PILE_CX, ddy = y + 0.5 - PILE_CY;
+      const d = Math.sqrt(ddx * ddx + ddy * ddy);
       list.push([-(d + (y - PILE_CY) * 0.05), i]);
     }
     list.sort((a, b) => a[0] - b[0]);
@@ -291,109 +294,126 @@ export class Sim {
     return this.outerIdx < this.outerTiles.length ? this.outerTiles[this.outerIdx] : -1;
   }
 
-  // ================================================================ Handarbeit
-  get hands() { return 1 + this.manual.up.hands; }
+  // ================================================================ Handarbeit (jeder Spieler hat eigene Hände)
+  // Nur lesen – legt nichts an (wichtig: die Oberfläche darf den Zustand nicht verändern)
+  getManual(pid = LOCAL): Manual { return this.manuals[pid] || EMPTY_MANUAL; }
+  private manualOf(pid: string): Manual {
+    if (!this.manuals[pid]) this.manuals[pid] = newManual();
+    return this.manuals[pid];
+  }
+  // Kompatibilität für Einzelspieler
+  get manual(): Manual { return this.getManual(LOCAL); }
+  handsOf(pid = LOCAL) { return 1 + this.getManual(pid).up.hands; }
+  get hands() { return this.handsOf(LOCAL); }
 
   // Nimmt eine (oder mit Zange mehrere) Banane(n) vom Feld. Rückgabe: Anzahl
-  manualTake(tile: number): number {
-    const free = this.hands - this.manual.slots.length;
+  manualTake(tile: number, pid = LOCAL): number {
+    const m = this.manualOf(pid);
+    const free = this.handsOf(pid) - m.slots.length;
     if (free <= 0 || this.finished) return 0;
-    const want = this.manual.up.tongs ? free : 1;
+    const want = m.up.tongs ? free : 1;
     let got = 0;
     for (let k = 0; k < want; k++) {
       let t = tile >= 0 && this.pile[tile] ? tile : -1;
       if (t < 0 && tile >= 0) t = this.nearestPileTile(tile % MAP_W, (tile / MAP_W) | 0, 3);
       if (t < 0) t = this.outerPileTile();
       if (t < 0 || !this.takeFromTile(t)) break;
-      this.manual.slots.push({ mask: 0 });
-      this.events.push({ t: 'manualGrab', tile: t });
+      m.slots.push({ mask: 0 });
+      this.events.push({ t: 'manualGrab', tile: t, pid });
       got++;
     }
     return got;
   }
 
   // Zieht Streifen `strip` (0..2) an allen gehaltenen Bananen ab
-  manualPeel(strip: number): number {
-    const per = 1 + this.manual.up.strips;
+  manualPeel(strip: number, pid = LOCAL): number {
+    const m = this.manualOf(pid);
+    const per = 1 + m.up.strips;
     let peeled = 0;
-    for (const b of this.manual.slots) {
+    for (const b of m.slots) {
       for (let k = 0; k < per; k++) {
         if (b.mask === 7) break;
-        let s = strip;
-        for (let j = 0; j < 3 && (b.mask & (1 << s)); j++) s = (s + 1) % 3;
-        b.mask |= 1 << s;
+        let st = strip;
+        for (let j = 0; j < 3 && (b.mask & (1 << st)); j++) st = (st + 1) % 3;
+        b.mask |= 1 << st;
         peeled++;
       }
     }
-    if (this.manual.up.autosell) this.sellPeeledManual();
+    if (m.up.autosell) this.sellPeeledManual(pid);
     return peeled;
   }
 
-  private sellManualAt(i: number) {
-    const b = this.manual.slots[i];
+  private sellManualAt(m: Manual, i: number, pid: string) {
+    const b = m.slots[i];
     const peeled = b.mask === 7;
     const value = peeled ? STAGES[1].value : STAGES[0].value;
-    this.manual.slots.splice(i, 1);
+    m.slots.splice(i, 1);
     if (peeled) this.stats.manualPeeledSold++; else this.stats.manualRawSold++;
     this.registerSale(value);
-    this.events.push({ t: 'manualSell', value });
+    this.events.push({ t: 'manualSell', value, pid });
   }
 
-  sellPeeledManual(): number {
+  sellPeeledManual(pid = LOCAL): number {
+    const m = this.manualOf(pid);
     let n = 0;
-    for (let i = this.manual.slots.length - 1; i >= 0; i--) {
-      if (this.manual.slots[i].mask === 7) { this.sellManualAt(i); n++; }
+    for (let i = m.slots.length - 1; i >= 0; i--) {
+      if (m.slots[i].mask === 7) { this.sellManualAt(m, i, pid); n++; }
     }
     return n;
   }
 
   // Verkauft alles aus dem Handbereich (geschält 3 $, roh 1 $)
-  manualSellAll(): number {
-    const n = this.manual.slots.length;
-    for (let i = n - 1; i >= 0; i--) this.sellManualAt(i);
+  manualSellAll(pid = LOCAL): number {
+    const m = this.manualOf(pid);
+    const n = m.slots.length;
+    for (let i = n - 1; i >= 0; i--) this.sellManualAt(m, i, pid);
     return n;
   }
 
-  manualUpgradeCost(id: ManualUpgradeId): number | null {
-    const def = MANUAL_UPGRADES.find((u) => u.id === id)!;
-    const lvl = this.manual.up[id];
+  manualUpgradeCost(id: ManualUpgradeId, pid = LOCAL): number | null {
+    const def = MANUAL_UPGRADES.find((u) => u.id === id);
+    if (!def) return null;
+    const lvl = this.getManual(pid).up[id];
     return lvl < def.costs.length ? def.costs[lvl] : null;
   }
 
-  buyManualUpgrade(id: ManualUpgradeId): boolean {
-    const cost = this.manualUpgradeCost(id);
+  buyManualUpgrade(id: ManualUpgradeId, pid = LOCAL): boolean {
+    const cost = this.manualUpgradeCost(id, pid);
     if (cost === null || this.money < cost) return false;
     this.money -= cost;
-    this.manual.up[id]++;
+    this.manualOf(pid).up[id]++;
     return true;
   }
 
   private tickManual() {
-    const m = this.manual;
-    const rate = AUTOGRAB_RATE[m.up.autograb];
-    if (rate > 0) {
-      m.grabAcc = Math.min(m.grabAcc + rate * DT, 2);
-      while (m.grabAcc >= 1 && m.slots.length < this.hands) {
-        const t = this.outerPileTile();
-        if (t < 0 || !this.takeFromTile(t)) break;
-        m.slots.push({ mask: 0 });
-        this.events.push({ t: 'manualGrab', tile: t });
-        m.grabAcc -= 1;
-      }
-    }
-    const pr = APPRENTICE_RATE[m.up.apprentice];
-    if (pr > 0 && m.slots.length) {
-      m.peelAcc += pr * DT;
-      while (m.peelAcc >= 1) {
-        m.peelAcc -= 1;
-        for (const b of m.slots) {
-          if (b.mask === 7) continue;
-          for (let s = 0; s < 3; s++) if (!(b.mask & (1 << s))) { b.mask |= 1 << s; break; }
+    // Feste Reihenfolge der Spieler -> auf allen Geräten gleich
+    for (const pid of Object.keys(this.manuals).sort()) {
+      const m = this.manuals[pid];
+      const rate = AUTOGRAB_RATE[m.up.autograb];
+      if (rate > 0) {
+        m.grabAcc = Math.min(m.grabAcc + rate * DT, 2);
+        while (m.grabAcc >= 1 && m.slots.length < this.handsOf(pid)) {
+          const t = this.outerPileTile();
+          if (t < 0 || !this.takeFromTile(t)) break;
+          m.slots.push({ mask: 0 });
+          this.events.push({ t: 'manualGrab', tile: t, pid });
+          m.grabAcc -= 1;
         }
       }
-      if (m.up.autosell) this.sellPeeledManual();
-    } else if (!m.slots.length) {
-      m.peelAcc = 0;
+      const pr = APPRENTICE_RATE[m.up.apprentice];
+      if (pr > 0 && m.slots.length) {
+        m.peelAcc += pr * DT;
+        while (m.peelAcc >= 1) {
+          m.peelAcc -= 1;
+          for (const b of m.slots) {
+            if (b.mask === 7) continue;
+            for (let st = 0; st < 3; st++) if (!(b.mask & (1 << st))) { b.mask |= 1 << st; break; }
+          }
+        }
+        if (m.up.autosell) this.sellPeeledManual(pid);
+      } else if (!m.slots.length) {
+        m.peelAcc = 0;
+      }
     }
   }
 
@@ -1013,9 +1033,10 @@ export class Sim {
     for (let y = Math.floor(cy - r - 1); y <= Math.ceil(cy + r + 1); y++) {
       for (let x = Math.floor(cx - r - 1); x <= Math.ceil(cx + r + 1); x++) {
         if (!inBounds(x, y)) continue;
-        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+        const ex = x + 0.5 - cx, ey = y + 0.5 - cy;
+        const d2 = ex * ex + ey * ey; // exakt (halbe Felder), daher überall gleich
         const i = tileIndex(x, y);
-        if (d <= r && this.pile[i]) list.push([d, i]);
+        if (d2 <= r * r && this.pile[i]) list.push([d2, i]);
       }
     }
     list.sort((a, b2) => a[0] - b2[0] || a[1] - b2[1]);
@@ -1055,7 +1076,8 @@ export class Sim {
     for (let i = 0; i < this.pile.length; i++) pile += this.pile[i];
     let factory = this.salvage.length;
     for (const e of this.ents.values()) factory += this.collectItems(e).length;
-    const manual = this.manual.slots.length;
+    let manual = 0;
+    for (const m of Object.values(this.manuals)) manual += m.slots.length;
     return { pile, factory, manual, sold: this.stats.sold, total: pile + factory + manual + this.stats.sold };
   }
 
@@ -1106,7 +1128,7 @@ export class Sim {
     }
     return {
       v: 1, money: this.money, nextId: this.nextId, tick: this.tick, finished: this.finished,
-      pile, ents, salvage: enc(this.salvage), manual: JSON.parse(JSON.stringify(this.manual)), stats: { ...this.stats },
+      pile, ents, salvage: enc(this.salvage), manuals: JSON.parse(JSON.stringify(this.manuals)), stats: { ...this.stats },
       win: [Array.from(this.winRevenue), Array.from(this.winSold), Array.from(this.winGrab), this.winSec],
     };
   }
@@ -1126,7 +1148,12 @@ export class Sim {
     sim.tick = d.tick;
     sim.finished = d.finished;
     sim.stats = { ...sim.stats, ...d.stats };
-    sim.manual = { ...sim.manual, ...d.manual, up: { ...sim.manual.up, ...d.manual.up } };
+    // Ältere Spielstände hatten nur einen Handbereich
+    const manuals = d.manuals || (d.manual ? { [LOCAL]: d.manual } : {});
+    for (const [pid, m] of Object.entries(manuals)) {
+      const base = newManual();
+      sim.manuals[pid] = { ...base, ...m, up: { ...base.up, ...(m.up || {}) }, slots: (m.slots || []).map((b) => ({ mask: b.mask | 0 })) };
+    }
     sim.salvage = dec(d.salvage);
     for (const s of d.ents) {
       if (s.k === 'belt') {
@@ -1156,6 +1183,7 @@ export class Sim {
       sim.winGrab = Float64Array.from(d.win[2]);
       sim.winSec = d.win[3];
     }
+    sim.nextId = d.nextId; // newBuilding() hat beim Laden hochgezählt
     const a = sim.audit();
     sim.inFactory = a.factory;
     if (a.total !== TOTAL) throw new Error(`Spielstand ungültig: ${a.total} statt ${TOTAL} Bananen`);
@@ -1191,7 +1219,8 @@ export interface SaveData {
   pile: number[];
   ents: SavedEnt[];
   salvage: number[];
-  manual: Sim['manual'];
+  manuals?: Record<string, Manual>;
+  manual?: Manual;
   stats: Stats;
   win?: [number[], number[], number[], number];
 }

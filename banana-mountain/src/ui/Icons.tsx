@@ -26,3 +26,4 @@ export const IconFactory = S(<path d="M3 21V11l6 4v-4l6 4V5h4v16z" />);
 export const IconCrate = S(<><path d="M3 7l9-4 9 4v10l-9 4-9-4z" /><path d="M3 7l9 4 9-4M12 11v10" /></>);
 export const IconSound = S(<><path d="M5 9v6h4l5 4V5L9 9z" /><path d="M17 9a4 4 0 0 1 0 6" /></>);
 export const IconMute = S(<><path d="M5 9v6h4l5 4V5L9 9z" /><path d="M17 9l4 6M21 9l-4 6" /></>);
+export const IconUsers = S(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.5-3.5 3.2-5.5 6.5-5.5s6 2 6.5 5.5" /><circle cx="17" cy="9" r="2.5" /><path d="M16.5 14.6c2.6.2 4.5 2 5 4.9" /></>);

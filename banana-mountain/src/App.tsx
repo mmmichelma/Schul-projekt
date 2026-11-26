@@ -9,6 +9,7 @@ import { formatMoney, fmtInt } from './ui/format';
 import { stageValue } from './sim/sim';
 import { IconCrate, IconClose } from './ui/Icons';
 import { sfx } from './ui/sound';
+import { StartScreen, FriendsModal, PlayersBar, ChatBox } from './ui/OnlineUI';
 
 const engine = new Engine();
 (window as unknown as { __bm: Engine }).__bm = engine;
@@ -16,17 +17,23 @@ const engine = new Engine();
 export default function App() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
-  const [modal, setModal] = useState<'none' | 'stats' | 'menu'>('none');
+  const [modal, setModal] = useState<'none' | 'stats' | 'menu' | 'friends'>('none');
+  const [needLogin, setNeedLogin] = useState(false);
   const [endSeen, setEndSeen] = useState(false);
   const [hideHint, setHideHint] = useState<string | null>(null);
   useSyncExternalStore(engine.subscribe, engine.getVersion);
 
   useEffect(() => {
     let alive = true;
-    engine.load().then(() => {
-      if (!alive || !canvas.current) return;
-      engine.attach(canvas.current);
-      setReady(true);
+    if (!canvas.current) return;
+    engine.attach(canvas.current);
+    // Angemeldet geblieben? Dann direkt in die eigene Fabrik
+    engine.net.resume().then(async (me) => {
+      if (!alive) return;
+      if (me) {
+        try { await engine.startOnline(); setReady(true); return; } catch (e) { engine.toast('Online-Fabrik konnte nicht geladen werden: ' + (e as Error).message, 'bad'); }
+      }
+      setNeedLogin(true);
     });
     return () => { alive = false; engine.detach(); };
   }, []);
@@ -49,7 +56,8 @@ export default function App() {
   return (
     <div className="app">
       <canvas ref={canvas} className="game-canvas" />
-      {!ready && (
+      {needLogin && !ready && <StartScreen engine={engine} onDone={() => { setNeedLogin(false); setReady(true); }} />}
+      {!ready && !needLogin && (
         <div className="loading">
           <svg width="80" height="80" viewBox="0 0 64 64" aria-hidden><path d="M8 38 Q30 60 56 20 Q51 15 46 20 Q34 44 10 32 Z" fill="#ffd21f" stroke="#a07800" strokeWidth="3" /></svg>
           <b>Banana Mountain</b>
@@ -58,7 +66,9 @@ export default function App() {
       )}
       {ready && (
         <>
-          <TopBar engine={engine} onStats={() => setModal('stats')} onMenu={() => setModal('menu')} />
+          <TopBar engine={engine} onStats={() => setModal('stats')} onMenu={() => setModal('menu')} onFriends={() => setModal('friends')} />
+          <PlayersBar engine={engine} />
+          <ChatBox engine={engine} />
           {hint && hint !== hideHint && (
             <div className="hint">
               <span>{hint}</span>
@@ -82,7 +92,8 @@ export default function App() {
             {engine.toasts.map((t) => <div key={t.id} className={'toast ' + t.kind}>{t.text}</div>)}
           </div>
           {modal === 'stats' && <StatsModal engine={engine} onClose={() => setModal('none')} />}
-          {modal === 'menu' && <MenuModal engine={engine} onClose={() => setModal('none')} />}
+          {modal === 'menu' && <MenuModal engine={engine} onClose={() => setModal('none')} onLogout={() => { setModal('none'); setReady(false); engine.logout().then(() => setNeedLogin(true)); }} />}
+          {modal === 'friends' && <FriendsModal engine={engine} onClose={() => setModal('none')} />}
           {sim.finished && !endSeen && <EndScreen engine={engine} onClose={() => setEndSeen(true)} />}
         </>
       )}

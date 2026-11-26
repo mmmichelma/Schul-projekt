@@ -70,18 +70,27 @@ export function StatsModal({ engine, onClose }: { engine: Engine; onClose: () =>
   );
 }
 
-export function MenuModal({ engine, onClose }: { engine: Engine; onClose: () => void }) {
+export function MenuModal({ engine, onClose, onLogout }: { engine: Engine; onClose: () => void; onLogout: () => void }) {
   const file = useRef<HTMLInputElement>(null);
   const [confirm, setConfirm] = useState(false);
   const [muted, setM] = useState(isMuted());
   return (
     <Modal title="Menü" onClose={onClose}>
+      {engine.mode !== 'offline' && engine.net.me && (
+        <div className="account">
+          <span>Angemeldet als <b>{engine.net.me.name}</b>{engine.mode === 'guest' ? ` – zu Gast bei ${engine.worldOwnerName}` : ''}</span>
+          <button className="btn small ghost" onClick={onLogout}>Abmelden</button>
+        </div>
+      )}
+      {engine.mode === 'offline' && (
+        <div className="account"><span>Offline-Modus (ohne Konto)</span><button className="btn small" onClick={onLogout}>Anmelden für Online</button></div>
+      )}
       <div className="menu-list">
         <button className="btn" onClick={() => { engine.save().then(() => engine.toast('Gespeichert.', 'good')); }}>Jetzt speichern</button>
         <button className="btn ghost" onClick={() => engine.exportSave()}>Spielstand exportieren</button>
-        <button className="btn ghost" onClick={() => file.current?.click()}>Spielstand importieren</button>
+        {engine.mode !== 'guest' && <button className="btn ghost" onClick={() => file.current?.click()}>Spielstand importieren</button>}
         <input ref={file} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { engine.importSave(f); onClose(); } e.target.value = ''; }} />
-        {!confirm
+        {engine.mode === 'guest' ? null : !confirm
           ? <button className="btn danger" onClick={() => setConfirm(true)}>Neues Spiel starten …</button>
           : <div className="confirm"><span>Wirklich? Die aktuelle Fabrik wird gelöscht.</span><button className="btn danger" onClick={() => { engine.newGame(); onClose(); }}>Ja, neu starten</button><button className="btn ghost" onClick={() => setConfirm(false)}>Abbrechen</button></div>}
       </div>
@@ -103,7 +112,7 @@ export function MenuModal({ engine, onClose }: { engine: Engine; onClose: () => 
         <li><b>U</b> Auswahl verbessern · <b>Entf</b> abreißen</li>
         <li>Handy/Tablet: ein Finger verschiebt, zwei Finger zoomen & drehen</li>
       </ul>
-      <p className="note">Automatisch gespeichert {engine.lastSaved ? `um ${new Date(engine.lastSaved).toLocaleTimeString('de-DE')}` : '–'}. Wenn das Spiel geschlossen ist, steht die Fabrik still.</p>
+      <p className="note">{engine.mode === 'guest' ? 'Der Besitzer der Fabrik speichert automatisch.' : engine.mode === 'host' ? 'Online gespeichert' : 'Automatisch gespeichert'} {engine.mode !== 'guest' ? (engine.lastSaved ? ` um ${new Date(engine.lastSaved).toLocaleTimeString('de-DE')}` : ' –') : ''}. Wenn das Spiel geschlossen ist, steht die Fabrik still.</p>
     </Modal>
   );
 }
@@ -143,7 +152,7 @@ export function EndScreen({ engine, onClose }: { engine: Engine; onClose: () => 
 // Tipps für den Anfang (Phase 1 → 2 → 3)
 export function hintFor(engine: Engine): string | null {
   const sim = engine.sim;
-  const slots = sim.manual.slots;
+  const slots = engine.myManual().slots;
   let collectors = 0, machines = 0, belts = 0;
   for (const e of sim.ents.values()) {
     if (e.kind === 'belt') belts++;

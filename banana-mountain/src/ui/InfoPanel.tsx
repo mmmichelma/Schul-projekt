@@ -50,7 +50,7 @@ export function InfoPanel({ engine }: { engine: Engine }) {
           <dt>Inhalt</dt><dd>{stageSummary(e.items)}</dd>
         </dl>
         <div className="actions">
-          {upPrice !== null && <button className="btn" disabled={sim.money < upPrice} onClick={() => { sim.upgrade(e.id); sfx.upgrade(); engine.emit(); }}><IconUp />Zu {BELT_TIERS[e.tier + 1].name} {formatMoney(upPrice)}</button>}
+          {upPrice !== null && <button className="btn" disabled={sim.money < upPrice} onClick={() => { if (engine.upgradeOne(e.id)) sfx.upgrade(); }}><IconUp />Zu {BELT_TIERS[e.tier + 1].name} {formatMoney(upPrice)}</button>}
           <button className="btn ghost" onClick={() => engine.rotateTool()}><IconRotate />Drehen</button>
           <button className="btn ghost" onClick={() => engine.startMove()}><IconMove />Verschieben</button>
           <button className="btn danger" onClick={() => engine.demolishSelection()}><IconTrash />Abreißen (+{formatMoney(e.invested)})</button>
@@ -99,7 +99,7 @@ export function InfoPanel({ engine }: { engine: Engine }) {
           <small>Geradeaus durchlassen:</small>
           <div className="stage-chips">
             {STAGES.map((s, i) => (
-              <button key={i} className={b.filter === i ? 'active' : ''} onClick={() => { sim.setFilter(b.id, i); engine.emit(); }} title={s.name}>
+              <button key={i} className={b.filter === i ? 'active' : ''} onClick={() => engine.setFilter(b.id, i)} title={s.name}>
                 <i style={{ background: s.color }} />{s.short}
               </button>
             ))}
@@ -108,7 +108,7 @@ export function InfoPanel({ engine }: { engine: Engine }) {
       )}
       <div className="actions">
         {upPrice !== null && (
-          <button className="btn" disabled={sim.money < upPrice} onClick={() => { if (sim.upgrade(b.id)) sfx.upgrade(); engine.emit(); }}>
+          <button className="btn" disabled={sim.money < upPrice} onClick={() => { if (engine.upgradeOne(b.id)) sfx.upgrade(); }}>
             <IconUp />Verbessern auf Level {b.level + 1} – {formatMoney(upPrice)}
           </button>
         )}

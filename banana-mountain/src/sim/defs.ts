@@ -118,9 +118,15 @@ export const TUNNEL_RANGE = 6;
 export const LOGISTIC_CAP = 12;
 
 // Formeln aus der Spielbeschreibung
-export const machineSpeed = (def: BuildingDef, level: number) => (def.speed || 0) * Math.pow(1.5, level - 1);
+// Potenz per Multiplikation: liefert auf jedem Gerät exakt dasselbe Ergebnis (wichtig für den Online-Modus)
+export function ipow(base: number, exp: number): number {
+  let r = 1;
+  for (let i = 0; i < exp; i++) r *= base;
+  return r;
+}
+export const machineSpeed = (def: BuildingDef, level: number) => (def.speed || 0) * ipow(1.5, level - 1);
 export const qualityMult = (level: number) => 1 + 0.15 * (level - 1);
-export const upgradeCost = (def: BuildingDef, level: number) => def.price * Math.pow(1.8, level);
+export const upgradeCost = (def: BuildingDef, level: number) => def.price * ipow(1.8, level);
 export const collectorRadius = (def: BuildingDef, level: number) => (def.radius || 0) + (level - 1);
 export const bufferCap = (speed: number) => Math.max(4, Math.ceil(speed * 0.6));
 

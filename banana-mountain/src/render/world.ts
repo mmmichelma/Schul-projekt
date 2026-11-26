@@ -68,6 +68,8 @@ export class GameRenderer {
   private selection: number[] = [];
   private selKey = '';
   preview: Preview = { kind: 'none' };
+  private cursorViews = new Map<string, THREE.Group>();
+  myPid = 'me';
   viewRect = { x0: 0, y0: 0, x1: MAP_W, y1: MAP_H };
 
   constructor(canvas: HTMLCanvasElement, sim: Sim) {
@@ -519,6 +521,9 @@ export class GameRenderer {
         if (!v || !v.model.group.visible) continue;
         flyBudget--;
         this.fx.fly(this.pile.tileTop(ev.tile), v.center.clone().setY(1.2), 0.5, 1.5);
+      } else if (ev.t === 'manualGrab' && ev.tile !== undefined && ev.pid !== undefined && ev.pid !== this.myPid) {
+        const cur = this.cursorViews.get(ev.pid);
+        if (cur) this.fx.fly(this.pile.tileTop(ev.tile), cur.position.clone().setY(1.5), 0.5, 1.5);
       } else if (ev.t === 'manualGrab' && ev.tile !== undefined) {
         // Fliegt zur Kamera (in den Schälbereich unten rechts)
         const to = new THREE.Vector3(0.72, -0.75, 0.5).unproject(this.camera);
@@ -542,6 +547,46 @@ export class GameRenderer {
     this.updatePreview();
     this.updateSelectionVisuals();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // Mauszeiger der Mitspieler (farbiger Ring + Name)
+  setCursors(list: Map<string, { name: string; x: number; z: number }>) {
+    for (const [id, g] of this.cursorViews) {
+      if (!list.has(id)) { this.scene.remove(g); this.cursorViews.delete(id); }
+    }
+    for (const [id, c] of list) {
+      let g = this.cursorViews.get(id);
+      if (!g) {
+        let h = 0;
+        for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+        const color = new THREE.Color().setHSL((h % 360) / 360, 0.85, 0.6);
+        g = new THREE.Group();
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 8, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true }));
+        ring.position.y = 0.3;
+        ring.renderOrder = 15;
+        const tex = canvasTexture(256, 64, (ctx) => {
+          ctx.fillStyle = 'rgba(15,18,24,0.85)';
+          ctx.fillRect(0, 0, 256, 64);
+          ctx.fillStyle = '#' + color.getHexString();
+          ctx.fillRect(0, 0, 10, 64);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 34px Inter, Arial, sans-serif';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(c.name, 22, 34);
+        }, false);
+        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+        label.scale.set(2.4, 0.6, 1);
+        label.position.y = 1.6;
+        label.renderOrder = 16;
+        g.add(ring, label);
+        g.position.set(c.x, 0, c.z);
+        this.scene.add(g);
+        this.cursorViews.set(id, g);
+      }
+      g.position.x += (c.x - g.position.x) * 0.25;
+      g.position.z += (c.z - g.position.z) * 0.25;
+      g.children[0].rotation.y += 0.03;
+    }
   }
 
   // Bildschirmposition eines Weltpunkts (für HTML-Overlays)

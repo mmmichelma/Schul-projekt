@@ -14,7 +14,8 @@ export function PeelPanel({ engine }: { engine: Engine }) {
   const [tab, setTab] = useState<'peel' | 'shop'>('peel');
   const [pops, setPops] = useState<{ id: number; text: string }[]>([]);
   const sim = engine.sim;
-  const m = sim.manual;
+  const m = engine.myManual();
+  const hands = engine.myHands();
   // Auf kleinen Bildschirmen weicht der Schälbereich der Bauleiste aus
   const small = typeof window !== 'undefined' && window.innerWidth < 640;
   const collapsed = !open || (small && (engine.buildMenuOpen || engine.tool.kind !== 'select' || engine.selection.length > 0));
@@ -31,7 +32,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
     ro.observe(el);
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      v.sync(engine.sim.manual.slots);
+      v.sync(engine.myManual().slots);
       v.render(Math.min(0.1, (now - last) / 1000));
       last = now;
     };
@@ -55,7 +56,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
 
   const onDown = (e: React.PointerEvent) => {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    if (!m.slots.length) { engine.grabFromPile(); sfx.grab(); return; }
+    if (!m.slots.length) { if (engine.grabFromPile()) sfx.grab(); return; }
     drag.current = { y: e.clientY, id: e.pointerId };
   };
   const onMove = (e: React.PointerEvent) => {
@@ -81,7 +82,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
   if (collapsed) {
     return (
       <button className="peel-mini" onClick={() => setOpen(true)} title="Schälbereich öffnen">
-        <IconHand /> {m.slots.length}/{sim.hands}
+        <IconHand /> {m.slots.length}/{hands}
       </button>
     );
   }
@@ -91,7 +92,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
       <div className="panel-head">
         <IconHand />
         <b>Schälbereich</b>
-        <span className="hands">{m.slots.length} / {sim.hands} Hände</span>
+        <span className="hands">{m.slots.length} / {hands} Hände</span>
         <div className="seg">
           <button className={tab === 'peel' ? 'active' : ''} onClick={() => setTab('peel')}>Schälen</button>
           <button className={tab === 'shop' ? 'active' : ''} onClick={() => setTab('shop')}>Werkstatt</button>
@@ -109,7 +110,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
             <div className="peel-hint">{hint}</div>
           </div>
           <div className="peel-actions">
-            <button className="btn ghost" onClick={() => { engine.grabFromPile(); sfx.grab(); }} disabled={m.slots.length >= sim.hands}>Banane nehmen</button>
+            <button className="btn ghost" onClick={() => { engine.grabFromPile(); sfx.grab(); }} disabled={m.slots.length >= hands}>Banane nehmen</button>
             <button className="btn" disabled={!m.slots.length} onClick={() => engine.manualSellAll()}>
               Verkaufen {m.slots.length ? formatMoney(peeled * 3 + raw) : ''}
             </button>
@@ -120,7 +121,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
         <div className="manual-shop">
           {MANUAL_UPGRADES.map((u) => {
             const lvl = m.up[u.id];
-            const cost = sim.manualUpgradeCost(u.id);
+            const cost = sim.manualUpgradeCost(u.id, engine.pid);
             const extra = u.id === 'autograb' && lvl ? ` (${AUTOGRAB_RATE[lvl]}/s)` : u.id === 'apprentice' && lvl ? ` (${APPRENTICE_RATE[lvl]} Streifen/s)` : '';
             return (
               <div key={u.id} className="mup">

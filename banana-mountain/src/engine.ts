@@ -1,7 +1,9 @@
 /*
  * Engine: verbindet Simulation, 3D-Darstellung, Eingabe und Benutzeroberfläche.
  */
-import { Sim, Blueprint, rotatedSize, Ent } from './sim/sim';
+import { Sim, Blueprint, rotatedSize, Ent, LOCAL, Manual } from './sim/sim';
+import { Cmd, applyCmd, validCmd, simHash } from './sim/commands';
+import { Online, WorldLink, OnlineUser } from './net/online';
 import { BUILDINGS, BELT_TIERS, DT, DX, DY, ManualUpgradeId, STAGES } from './sim/defs';
 import { GameRenderer, QUALITIES } from './render/world';
 import { saveGame, loadGame, exportFile, readFile, deleteGame } from './storage/idb';
@@ -24,6 +26,10 @@ export interface Settings { quality: number; showFps: boolean }
 
 const SETTINGS_KEY = 'banana-mountain-settings';
 
+export type Mode = 'offline' | 'host' | 'guest';
+export interface ChatLine { id: number; name: string; text: string; mine: boolean }
+export interface Cursor { name: string; x: number; z: number; t: number }
+
 export class Engine {
   sim: Sim;
   r: GameRenderer | null = null;
@@ -38,6 +44,30 @@ export class Engine {
   settings: Settings = { quality: 2, showFps: false };
   lastSaved = 0;
   loaded = false;
+
+  // ---------------------------------------------------------------- Online
+  mode: Mode = 'offline';
+  pid = LOCAL;               // wer bin ich in der Simulation (eigene Hände)
+  net = new Online();
+  worldOwner: string | null = null;
+  worldOwnerName = '';
+  players: OnlineUser[] = [];
+  chat: ChatLine[] = [];
+  cursors = new Map<string, Cursor>();
+  syncing = false;           // Gast wartet auf den Spielstand des Gastgebers
+  private link: WorldLink | null = null;
+  private epoch = 0;
+  private pending: { pid: string; cmd: Cmd }[] = [];
+  private outCmds: [number, string, Cmd][] = [];
+  private sendTimer = 0;
+  private gCmds = new Map<number, [string, Cmd][]>();
+  private hostTick = 0;
+  private hostHash: [number, string] | null = null;
+  private lastResync = -1e9;
+  private lastSyncServe = 0;
+  private ownerMissing = 0;
+  private lastCursor = 0;
+  private chatId = 0;
 
   private version = 0;
   private listeners = new Set<() => void>();
@@ -84,20 +114,243 @@ export class Engine {
   }
 
   // ---------------------------------------------------------------- Start
-  async load() {
+  // Ohne Konto: Spielstand aus diesem Browser (IndexedDB)
+  async startOffline() {
+    await this.leaveWorld();
+    this.mode = 'offline';
+    this.pid = LOCAL;
+    let sim = Sim.newGame();
     try {
       const data = await loadGame();
       if (data) {
-        this.sim = Sim.deserialize(data);
+        sim = Sim.deserialize(data);
         this.toast('Spielstand geladen – die Fabrik läuft genau dort weiter.', 'good');
       }
     } catch (e) {
       console.warn(e);
       this.toast('Spielstand konnte nicht geladen werden – neues Spiel.', 'bad');
     }
+    this.setSim(sim);
     this.loaded = true;
     this.emit();
   }
+
+  // Mit Konto: die eigene Fabrik liegt auf dem Server, ich bin Gastgeber
+  async startOnline() {
+    const me = this.net.me!;
+    await this.leaveWorld();
+    let sim: Sim;
+    const data = await this.net.loadWorld(me.id);
+    if (data) {
+      sim = Sim.deserialize(data);
+    } else {
+      // Erste Anmeldung: Offline-Spielstand übernehmen, falls vorhanden
+      const local = await loadGame().catch(() => null);
+      sim = local ? Sim.deserialize(local) : Sim.newGame();
+      this.toast(local ? 'Dein Offline-Spielstand wurde in dein Konto übernommen.' : 'Deine eigene Fabrik wurde angelegt!', 'good');
+    }
+    if (sim.manuals[LOCAL] && !sim.manuals[me.id]) { sim.manuals[me.id] = sim.manuals[LOCAL]; delete sim.manuals[LOCAL]; }
+    this.mode = 'host';
+    this.pid = me.id;
+    this.epoch = Date.now() % 1e9;
+    this.worldOwner = me.id;
+    this.worldOwnerName = me.name;
+    this.setSim(sim);
+    this.link = this.net.openWorld(me.id, this.hostHandlers(), (p) => this.onPlayers(p), () => {});
+    await this.net.joinLobby(me.id);
+    this.net.onChange = () => this.emit();
+    await this.save();
+    this.loaded = true;
+    this.emit();
+  }
+
+  // Einer Freundes-Fabrik beitreten (als Gast)
+  async joinFriend(id: string, name: string) {
+    if (this.worldOwner === id) return;
+    await this.leaveWorld();
+    this.mode = 'guest';
+    this.pid = this.net.me!.id;
+    this.worldOwner = id;
+    this.worldOwnerName = name;
+    this.syncing = true;
+    this.epoch = 0;
+    this.gCmds.clear();
+    this.hostTick = 0;
+    this.hostHash = null;
+    this.ownerMissing = 0;
+    this.lastResync = -1e9;
+    this.link = this.net.openWorld(id, this.guestHandlers(), (p) => this.onPlayers(p), () => this.requestResync(true));
+    await this.net.setWorld(id);
+    this.toast(`Verbinde mit der Fabrik von ${name} …`);
+    this.emit();
+  }
+
+  async goHome(reason?: string) {
+    if (reason) this.toast(reason, 'bad');
+    await this.startOnline();
+  }
+
+  async logout() {
+    await this.leaveWorld();
+    await this.net.logout();
+    this.mode = 'offline';
+    this.pid = LOCAL;
+    this.loaded = false;
+    this.emit();
+  }
+
+  private async leaveWorld() {
+    if (this.mode === 'host') {
+      this.link?.send('bye', {});
+      await this.save();
+    }
+    if (this.link) { await this.link.close(); this.link = null; }
+    this.players = [];
+    this.cursors.clear();
+    this.chat = [];
+    this.pending = [];
+    this.outCmds = [];
+    this.syncing = false;
+    this.worldOwner = null;
+  }
+
+  private onPlayers(p: OnlineUser[]) {
+    this.players = p;
+    this.emit();
+  }
+
+  // ---------------------------------------------------------------- Gastgeber
+  private hostHandlers(): Record<string, (p: any) => void> {
+    return {
+      cmd: (p) => {
+        if (!p || p.e !== this.epoch || !validCmd(p.cmd)) return;
+        if (!this.players.some((pl) => pl.id === p.pid)) return;
+        this.pending.push({ pid: p.pid, cmd: p.cmd });
+      },
+      sync_req: () => this.serveSync(),
+      cursor: (p) => this.onCursor(p),
+      chat: (p) => this.onChat(p),
+    };
+  }
+
+  private async serveSync() {
+    const now = performance.now();
+    if (now - this.lastSyncServe < 800) return;
+    this.lastSyncServe = now;
+    const data = this.sim.serialize();
+    try {
+      await this.net.saveWorld(data);
+      this.lastSaved = Date.now();
+      this.link?.send('sync', { e: this.epoch, t: data.tick });
+    } catch (e) {
+      console.warn('Sync fehlgeschlagen', e);
+    }
+  }
+
+  // ---------------------------------------------------------------- Gast
+  private guestHandlers(): Record<string, (p: any) => void> {
+    return {
+      tick: (p) => {
+        if (!p || typeof p.t !== 'number' || !Array.isArray(p.c)) return;
+        if (p.e !== this.epoch) {
+          if (!this.syncing) { this.requestResync(true); }
+          this.epoch = p.e;
+          this.gCmds.clear();
+        }
+        for (const entry of p.c) {
+          if (!Array.isArray(entry) || entry.length !== 3) continue;
+          const [t, pid, cmd] = entry;
+          if (typeof t !== 'number' || typeof pid !== 'string' || !validCmd(cmd)) continue;
+          if (!this.syncing && t <= this.sim.tick) continue;
+          if (!this.gCmds.has(t)) this.gCmds.set(t, []);
+          this.gCmds.get(t)!.push([pid, cmd]);
+        }
+        this.hostTick = Math.max(this.hostTick, p.t);
+        if (typeof p.h === 'string') this.hostHash = [p.t, p.h];
+      },
+      sync: (p) => { if (p && (this.syncing || p.e !== this.epoch)) this.loadSnapshot(p.e); },
+      bye: () => { if (this.mode === 'guest') this.goHome(`${this.worldOwnerName} hat die Fabrik verlassen – zurück in deine eigene.`); },
+      cursor: (p) => this.onCursor(p),
+      chat: (p) => this.onChat(p),
+    };
+  }
+
+  private requestResync(force = false) {
+    const now = performance.now();
+    if (!force && now - this.lastResync < 5000) return;
+    this.lastResync = now;
+    this.syncing = true;
+    this.link?.send('sync_req', {});
+  }
+
+  private async loadSnapshot(epoch: number) {
+    if (!this.worldOwner) return;
+    try {
+      const data = await this.net.loadWorld(this.worldOwner);
+      if (!data || this.mode !== 'guest') return;
+      const sim = Sim.deserialize(data);
+      if (epoch !== this.epoch) { this.gCmds.clear(); this.epoch = epoch; }
+      for (const t of [...this.gCmds.keys()]) if (t <= sim.tick) this.gCmds.delete(t);
+      this.hostTick = Math.max(this.hostTick, sim.tick);
+      const first = this.sim.tick === 0 || this.syncing;
+      this.setSim(sim, true);
+      this.syncing = false;
+      if (first) this.toast(`Du bist in der Fabrik von ${this.worldOwnerName}!`, 'good');
+    } catch (e) {
+      this.goHome('Beitreten nicht möglich: ' + (e as Error).message);
+    }
+  }
+
+  private guestStep(dt: number) {
+    if (this.syncing) { this.acc = 0; return; }
+    const behind = this.hostTick - this.sim.tick;
+    if (behind > 400) { this.requestResync(); return; }
+    if (behind <= 0) { this.acc = Math.min(this.acc, DT); return; }
+    this.acc += dt * (behind > 12 ? 3 : behind > 6 ? 1.4 : 1);
+    let steps = 0;
+    while (this.acc >= DT && this.sim.tick < this.hostTick && steps < 40) {
+      const t = this.sim.tick + 1;
+      const cmds = this.gCmds.get(t);
+      if (cmds) { for (const [pid, c] of cmds) applyCmd(this.sim, pid, c); this.gCmds.delete(t); }
+      this.sim.step();
+      this.acc -= DT;
+      steps++;
+      if (this.hostHash && this.hostHash[0] === this.sim.tick && this.hostHash[1] !== simHash(this.sim)) {
+        console.warn('Abweichung erkannt – lade neu');
+        this.requestResync();
+        break;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- Chat & Mauszeiger
+  private onCursor(p: any) {
+    if (!p || typeof p.pid !== 'string' || p.pid === this.pid || typeof p.x !== 'number' || typeof p.z !== 'number') return;
+    this.cursors.set(p.pid, { name: String(p.name || '?').slice(0, 16), x: p.x, z: p.z, t: performance.now() });
+  }
+  private onChat(p: any) {
+    if (!p || typeof p.text !== 'string') return;
+    this.chat = [...this.chat.slice(-30), { id: ++this.chatId, name: String(p.name || '?').slice(0, 16), text: p.text.slice(0, 200), mine: false }];
+    this.emit();
+  }
+  sendChat(text: string) {
+    text = text.trim().slice(0, 200);
+    if (!text || !this.link || !this.net.me) return;
+    this.link.send('chat', { name: this.net.me.name, text });
+    this.chat = [...this.chat.slice(-30), { id: ++this.chatId, name: this.net.me.name, text, mine: true }];
+    this.emit();
+  }
+
+  // ---------------------------------------------------------------- Befehle
+  // Jede Änderung an der Fabrik läuft hier durch
+  run(cmd: Cmd) {
+    if (this.mode === 'offline') { applyCmd(this.sim, this.pid, cmd); this.emit(); }
+    else if (this.mode === 'host') this.pending.push({ pid: this.pid, cmd });
+    else if (this.link && !this.syncing) this.link.send('cmd', { e: this.epoch, pid: this.pid, cmd });
+  }
+
+  myManual(): Manual { return this.sim.getManual(this.pid); }
+  myHands() { return this.sim.handsOf(this.pid); }
 
   buildMenuOpen = false;
 
@@ -149,12 +402,15 @@ export class Engine {
     // Große Pausen (Tab im Hintergrund) werden NICHT nachgeholt – kein Offline-Farmen
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
-    this.acc += dt;
-    let steps = 0;
-    while (this.acc >= DT && steps < 10) { this.sim.step(); this.acc -= DT; steps++; }
-    if (steps === 10) this.acc = 0;
+    this.stepSim(dt);
     this.keyboardCamera(dt);
-    this.r!.render(dt, this.acc / DT);
+    if (this.r && this.mode !== 'offline') {
+      const now = performance.now();
+      for (const [id, c] of this.cursors) if (now - c.t > 6000) this.cursors.delete(id);
+      this.r.setCursors(this.cursors);
+    }
+    this.r!.myPid = this.pid;
+    this.r!.render(dt, Math.min(1, this.acc / DT));
     this.fpsFrames++;
     this.fpsTime += dt;
     if (this.fpsTime >= 1) { this.fps = Math.round(this.fpsFrames / this.fpsTime); this.fpsFrames = 0; this.fpsTime = 0; }
@@ -163,6 +419,41 @@ export class Engine {
     this.saveTimer += dt;
     if (this.saveTimer > 15) { this.saveTimer = 0; this.save(); }
   };
+
+  private stepSim(dt: number) {
+    if (this.mode === 'guest') {
+      this.guestStep(dt);
+      // Ist der Besitzer noch da?
+      if (!this.syncing && this.players.length && !this.players.some((p) => p.id === this.worldOwner)) {
+        this.ownerMissing += dt;
+        if (this.ownerMissing > 6) { this.ownerMissing = 0; this.goHome(`${this.worldOwnerName} ist nicht mehr online – zurück in deine Fabrik.`); }
+      } else this.ownerMissing = 0;
+      return;
+    }
+    this.acc += dt;
+    let steps = 0;
+    while (this.acc >= DT && steps < 10) {
+      if (this.mode === 'host') {
+        const cmds = this.pending.splice(0);
+        for (const c of cmds) applyCmd(this.sim, c.pid, c.cmd);
+        this.sim.step();
+        for (const c of cmds) this.outCmds.push([this.sim.tick, c.pid, c.cmd]);
+      } else {
+        this.sim.step();
+      }
+      this.acc -= DT;
+      steps++;
+    }
+    if (steps === 10) this.acc = 0;
+    if (this.mode === 'host' && this.link) {
+      this.sendTimer += dt;
+      if (this.sendTimer >= 0.2 || this.outCmds.length > 30) {
+        this.sendTimer = 0;
+        if (this.players.length > 1) this.link.send('tick', { e: this.epoch, t: this.sim.tick, c: this.outCmds, h: simHash(this.sim) });
+        this.outCmds = [];
+      }
+    }
+  }
 
   private keyboardCamera(dt: number) {
     if (!this.keys.size || !this.r) return;
@@ -182,11 +473,12 @@ export class Engine {
 
   // ---------------------------------------------------------------- Speichern
   async save() {
-    if (this.saving) return;
+    if (this.saving || !this.loaded) return; // vor dem Start nichts überschreiben
     this.saving = true;
     try {
-      await saveGame(this.sim.serialize());
-      this.lastSaved = Date.now();
+      if (this.mode === 'offline') await saveGame(this.sim.serialize());
+      else if (this.mode === 'host') await this.net.saveWorld(this.sim.serialize());
+      if (this.mode !== 'guest') this.lastSaved = Date.now();
     } catch (e) {
       console.warn('Speichern fehlgeschlagen', e);
     }
@@ -198,8 +490,10 @@ export class Engine {
   async importSave(file: File) {
     try {
       const data = await readFile(file);
+      if (this.mode === 'guest') throw new Error('Nur in deiner eigenen Fabrik möglich.');
       const sim = Sim.deserialize(data);
-      this.setSim(sim);
+      if (this.mode === 'host' && sim.manuals[LOCAL] && !sim.manuals[this.pid]) { sim.manuals[this.pid] = sim.manuals[LOCAL]; delete sim.manuals[LOCAL]; }
+      this.replaceWorld(sim);
       await this.save();
       this.toast('Spielstand importiert.', 'good');
     } catch (e) {
@@ -208,14 +502,27 @@ export class Engine {
   }
 
   async newGame() {
-    await deleteGame();
-    this.setSim(Sim.newGame());
+    if (this.mode === 'guest') { this.toast('Ein neues Spiel geht nur in deiner eigenen Fabrik.', 'bad'); return; }
+    if (this.mode === 'offline') await deleteGame();
+    this.replaceWorld(Sim.newGame());
     await this.save();
     this.toast('Neues Spiel: 1.000.000 Bananen warten auf dich!', 'good');
   }
 
-  private setSim(sim: Sim) {
+  // Ganze Fabrik austauschen (als Gastgeber: Gäste laden neu)
+  private replaceWorld(sim: Sim) {
+    this.setSim(sim);
+    if (this.mode === 'host') {
+      this.epoch = Date.now() % 1e9;
+      this.pending = [];
+      this.outCmds = [];
+      this.serveSync();
+    }
+  }
+
+  private setSim(sim: Sim, keepView = false) {
     this.sim = sim;
+    if (keepView) { this.r?.setSim(sim); this.select(this.selection.filter((id) => sim.get(id))); this.emit(); return; }
     this.selection = [];
     this.tool = { kind: 'select' };
     this.r?.setSim(sim);
@@ -250,26 +557,25 @@ export class Engine {
     const t = this.tool;
     if (t.kind === 'build' || t.kind === 'belt' || t.kind === 'move') { t.dir = (t.dir + 1) % 4; this.updatePreview(); this.emit(); return; }
     if (this.selection.length === 1) {
-      if (!this.sim.rotate(this.selection[0])) this.toast('Drehen nicht möglich – kein Platz.', 'bad');
-      this.emit();
+      const e = this.sim.get(this.selection[0]);
+      if (e && e.kind === 'building' && !this.sim.canPlace(e.type, e.x, e.y, (e.dir + 1) % 4, e.id)) { this.toast('Drehen nicht möglich – kein Platz.', 'bad'); return; }
+      this.run({ k: 'rotate', id: this.selection[0] });
     }
   }
 
   demolishSelection() {
     let refund = 0;
-    for (const id of this.selection) {
-      const e = this.sim.get(id);
-      if (e) { refund += e.invested; this.sim.demolish(id); }
-    }
+    for (const id of this.selection) refund += this.sim.get(id)?.invested || 0;
+    if (this.selection.length) this.run({ k: 'demolish', ids: [...this.selection] });
     if (this.selection.length) this.toast(`Abgerissen – ${formatMoney(refund)} erstattet.`, 'good');
     this.select([]);
   }
 
   upgradeSelection() {
-    let n = 0;
-    for (const id of this.selection) if (this.sim.upgrade(id)) n++;
-    if (!n) this.toast('Nicht genug Geld oder schon maximal.', 'bad');
-    this.emit();
+    const prices = this.selection.map((id) => this.sim.upgradePrice(id)).filter((c): c is number => c !== null);
+    if (!prices.length) { this.toast('Schon auf dem höchsten Level.', 'bad'); return; }
+    if (this.sim.money < Math.min(...prices)) { this.toast('Nicht genug Geld.', 'bad'); return; }
+    this.run({ k: 'upgrade', ids: [...this.selection] });
   }
 
   upgradeSelectionCost(): number {
@@ -279,8 +585,7 @@ export class Engine {
   }
 
   toggleSelection() {
-    for (const id of this.selection) this.sim.toggle(id);
-    this.emit();
+    this.run({ k: 'toggle', ids: [...this.selection] });
   }
 
   copySelection() {
@@ -298,18 +603,36 @@ export class Engine {
   }
 
   sellSalvage() {
-    const v = this.sim.sellSalvage();
-    this.toast(`Bergungskiste verkauft: +${formatMoney(v)}`, 'good');
+    this.run({ k: 'salvage' });
+    this.toast('Bergungskiste wird verkauft.', 'good');
   }
 
   // Handarbeit
-  peelStrip(strip: number) { const n = this.sim.manualPeel(strip); this.emit(); return n; }
-  manualSellAll() { this.sim.manualSellAll(); this.emit(); }
-  buyManual(id: ManualUpgradeId) { if (!this.sim.buyManualUpgrade(id)) this.toast('Nicht genug Geld.', 'bad'); this.emit(); }
-  grabFromPile() {
-    const n = this.sim.manualTake(-1);
-    if (!n) this.toast(this.sim.manual.slots.length >= this.sim.hands ? 'Deine Hände sind voll – erst schälen!' : 'Keine Bananen mehr.', 'bad');
-    this.emit();
+  // Rückgabe: ob ein Streifen abgezogen werden kann
+  peelStrip(strip: number) {
+    const m = this.myManual();
+    if (!m.slots.some((b) => b.mask !== 7)) return 0;
+    this.run({ k: 'peel', strip });
+    return 1;
+  }
+  manualSellAll() { this.run({ k: 'sellHand' }); }
+  buyManual(id: ManualUpgradeId) {
+    const cost = this.sim.manualUpgradeCost(id, this.pid);
+    if (cost === null || this.sim.money < cost) { this.toast('Nicht genug Geld.', 'bad'); return; }
+    this.run({ k: 'buyHand', id });
+  }
+  grabFromPile(tile = -1) {
+    if (this.myManual().slots.length >= this.myHands()) { this.toast('Deine Hände sind voll – erst schälen!', 'bad'); return false; }
+    if (this.sim.pileRemaining <= 0) { this.toast('Keine Bananen mehr im Berg.', 'bad'); return false; }
+    this.run({ k: 'take', tile });
+    return true;
+  }
+  setFilter(id: number, stage: number) { this.run({ k: 'filter', id, stage }); }
+  upgradeOne(id: number) {
+    const c = this.sim.upgradePrice(id);
+    if (c === null || this.sim.money < c) { this.toast('Nicht genug Geld.', 'bad'); return false; }
+    this.run({ k: 'upgrade', ids: [id] });
+    return true;
   }
 
   focusPile() { this.r?.focus(64, 60); }
@@ -455,6 +778,10 @@ export class Engine {
     }
     const tile = this.r.pickTile(e.clientX, e.clientY);
     const changed = !tile || !this.hover || tile.x !== this.hover.x || tile.y !== this.hover.y;
+    if (tile && changed && this.link && this.net.me && this.players.length > 1 && performance.now() - this.lastCursor > 150) {
+      this.lastCursor = performance.now();
+      this.link.send('cursor', { pid: this.pid, name: this.net.me.name, x: tile.x + 0.5, z: tile.y + 0.5 });
+    }
     this.hover = tile;
     if (this.gesture === 'beltDrag' && tile) this.extendPath(tile);
     if (changed || this.tooltip) this.updatePreview();
@@ -486,8 +813,9 @@ export class Engine {
       case 'beltDrag':
         if (t.kind === 'belt' && this.path.length) {
           const cells = this.beltCells().filter((c) => c.ok);
-          const n = this.sim.placeBeltPath(cells, t.tier);
-          if (n < cells.length) this.toast(n ? `Nur ${n} von ${cells.length} Feldern gebaut – zu wenig Geld.` : 'Zu wenig Geld für Förderbänder.', 'bad');
+          const cost = this.sim.beltPathCost(cells, t.tier);
+          if (cost > this.sim.money) this.toast(this.sim.money >= BELT_TIERS[t.tier].price ? 'Nicht genug Geld für alle Felder – es wird gebaut, so weit das Geld reicht.' : 'Zu wenig Geld für Förderbänder.', 'bad');
+          if (cells.length) this.run({ k: 'belts', cells: cells.map((c) => [c.x, c.y, c.dir] as [number, number, number]), tier: t.tier });
         }
         this.path = [];
         break;
@@ -497,9 +825,11 @@ export class Engine {
           const ids = new Set<number>();
           for (let y = rc.y0; y <= rc.y1; y++) for (let x = rc.x0; x <= rc.x1; x++) { const en = this.sim.entAt(x, y); if (en) ids.add(en.id); }
           let refund = 0;
-          for (const id of ids) { refund += this.sim.get(id)!.invested; this.sim.demolish(id); }
-          if (ids.size) this.toast(`${ids.size} Teile abgerissen – ${formatMoney(refund)} erstattet.`, 'good');
-          if (this.sim.salvage.length) this.toast(`${this.sim.salvage.length} Bananen liegen in der Bergungskiste.`);
+          for (const id of ids) refund += this.sim.get(id)!.invested;
+          if (ids.size) {
+            this.run({ k: 'demolish', ids: [...ids] });
+            this.toast(`${ids.size} Teile abgerissen – ${formatMoney(refund)} erstattet.`, 'good');
+          }
         }
         break;
       default: break;
@@ -520,9 +850,7 @@ export class Engine {
     }
     const tile = r.pickPile(e.clientX, e.clientY);
     if (tile >= 0) {
-      const n = this.sim.manualTake(tile);
-      if (!n) this.toast('Deine Hände sind voll – schäl erst die Banane!', 'bad');
-      this.emit();
+      this.grabFromPile(tile);
       return;
     }
     this.select([]);
@@ -534,15 +862,20 @@ export class Engine {
       const o = this.placementOrigin(t.type, t.dir, tile);
       const def = BUILDINGS[t.type];
       if (this.sim.money < def.price) { this.toast(`Zu wenig Geld für ${def.name}.`, 'bad'); return; }
-      if (!this.sim.place(t.type, o.x, o.y, t.dir)) this.toast('Hier ist kein Platz (Bananen oder Gebäude im Weg).', 'bad');
+      if (!this.sim.canPlace(t.type, o.x, o.y, t.dir)) { this.toast('Hier ist kein Platz (Bananen oder Gebäude im Weg).', 'bad'); return; }
+      this.run({ k: 'place', type: t.type, x: o.x, y: o.y, dir: t.dir });
     } else if (t.kind === 'move') {
       const e = this.sim.get(t.id);
       if (!e) return;
       const o = e.kind === 'building' ? this.placementOrigin(e.type, t.dir, tile) : tile;
-      if (this.sim.move(t.id, o.x, o.y, t.dir)) { this.setTool({ kind: 'select' }); this.select([t.id]); }
-      else this.toast('Hier ist kein Platz.', 'bad');
+      const free = e.kind === 'building' ? this.sim.canPlace(e.type, o.x, o.y, t.dir, e.id) : this.sim.cellFree(o.x, o.y, e.id);
+      if (!free) { this.toast('Hier ist kein Platz.', 'bad'); return; }
+      this.run({ k: 'move', id: t.id, x: o.x, y: o.y, dir: t.dir });
+      this.setTool({ kind: 'select' });
+      this.select([t.id]);
     } else if (t.kind === 'paste') {
-      if (!this.sim.paste(t.bp, tile.x, tile.y)) this.toast('Einfügen nicht möglich (Platz oder Geld).', 'bad');
+      if (!this.sim.blueprintValid(t.bp, tile.x, tile.y) || this.sim.money < this.sim.blueprintCost(t.bp)) { this.toast('Einfügen nicht möglich (Platz oder Geld).', 'bad'); return; }
+      this.run({ k: 'paste', bp: t.bp, x: tile.x, y: tile.y });
     }
   }
 
@@ -578,6 +911,7 @@ export class Engine {
     else if (k === 'b') this.setTool({ kind: 'belt', tier: 0, dir: 0 });
     else if (k === 'x') this.setTool({ kind: 'demolish' });
     else if (k === ' ') { e.preventDefault(); this.grabFromPile(); }
+    else if (k === 'enter') { this.emit(); }
   }
 
   // ---------------------------------------------------------------- Hilfen für die Oberfläche
