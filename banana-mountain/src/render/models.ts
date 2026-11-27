@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { BUILDINGS, STAGES, BELT_TIERS } from '../sim/defs';
 import type { Status } from '../sim/sim';
-import { bananaGeometry, gearGeometry, hazardTexture, dripTexture, labelTexture, canvasTexture, rbox } from './assets';
+import { bananaGeometry, gearGeometry, hazardTexture, dripTexture, labelTexture, canvasTexture, rbox, paintTexture, brushedTexture, treadTexture, ventTexture } from './assets';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface ModelCtx {
   t: number;
@@ -38,19 +39,24 @@ let M: Record<string, THREE.MeshStandardMaterial> | null = null;
 function mats() {
   if (M) return M;
   const hz = hazardTexture();
+  const pt = paintTexture();
+  const br = brushedTexture();
+  const paintM = (c: string, rough = 0.5, metal = 0.15) => std(c, rough, metal, { map: pt });
   M = {
-    steel: std('#9aa3ae', 0.4, 0.65),
-    dark: std('#3f4650', 0.55, 0.5),
+    steel: std('#a7b0ba', 0.38, 0.75, { roughnessMap: br }),
+    tread: std('#ffffff', 0.45, 0.55, { map: treadTexture() }),
+    vent: std('#ffffff', 0.6, 0.4, { map: ventTexture() }),
+    dark: std('#3f4650', 0.5, 0.5, { map: pt }),
     darker: std('#262a30', 0.7, 0.3),
-    panel: std('#d5dbe2', 0.55, 0.15),
-    panelBlue: std('#5b7fa6', 0.5, 0.25),
-    yellow: std('#f2c230', 0.45, 0.15),
-    orange: std('#ff8a1f', 0.45, 0.1),
-    red: std('#d94040', 0.5, 0.1),
-    green: std('#3fae4b', 0.5, 0.1),
-    blue: std('#3a7bd5', 0.45, 0.2),
-    purple: std('#7b3fe4', 0.4, 0.3),
-    white: std('#f2f2f2', 0.6),
+    panel: paintM('#d5dbe2', 0.55, 0.15),
+    panelBlue: paintM('#5b7fa6', 0.5, 0.25),
+    yellow: paintM('#f2c230', 0.45, 0.15),
+    orange: paintM('#ff8a1f', 0.45, 0.1),
+    red: paintM('#d94040', 0.5, 0.1),
+    green: paintM('#3fae4b', 0.5, 0.1),
+    blue: paintM('#3a7bd5', 0.45, 0.2),
+    purple: paintM('#7b3fe4', 0.4, 0.3),
+    white: paintM('#f2f2f2', 0.6),
     black: std('#1a1c20', 0.8),
     rubber: std('#22252a', 0.9),
     copper: std('#c87533', 0.3, 0.85),
@@ -133,40 +139,66 @@ function bananaMesh(scale = 1) {
   return m;
 }
 
-// Grundplatte mit Warnstreifen
+// Grundplatte: Sockel, Riffelblech oben, Warnstreifen rundum, Schrauben in den Ecken
+const PLATE_BOLTS = new Map<string, THREE.BufferGeometry>();
 function basePlate(p: THREE.Object3D, w: number, h: number, mat?: THREE.Material) {
   const m = mats();
-  box(p, w - 0.06, 0.14, h - 0.06, mat || m.dark, 0, 0.07, 0);
+  box(p, w - 0.04, 0.1, h - 0.04, m.darker, 0, 0.05, 0);
+  box(p, w - 0.2, 0.06, h - 0.2, mat || m.tread, 0, 0.12, 0);
   const t = 0.07;
-  box(p, w - 0.06, 0.03, t, m.hazard, 0, 0.155, h / 2 - 0.03 - t / 2);
-  box(p, w - 0.06, 0.03, t, m.hazard, 0, 0.155, -h / 2 + 0.03 + t / 2);
+  box(p, w - 0.06, 0.035, t, m.hazard, 0, 0.12, h / 2 - 0.03 - t / 2);
+  box(p, w - 0.06, 0.035, t, m.hazard, 0, 0.12, -h / 2 + 0.03 + t / 2);
+  box(p, t, 0.035, h - 0.2, m.hazard, w / 2 - 0.03 - t / 2, 0.12, 0);
+  box(p, t, 0.035, h - 0.2, m.hazard, -w / 2 + 0.03 + t / 2, 0.12, 0);
+  const k = `${w},${h}`;
+  let bolts = PLATE_BOLTS.get(k);
+  if (!bolts) {
+    const parts: THREE.BufferGeometry[] = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      parts.push(new THREE.CylinderGeometry(0.045, 0.05, 0.03, 6).translate(sx * (w / 2 - 0.17), 0.165, sz * (h / 2 - 0.17)));
+    }
+    bolts = mergeGeometries(parts)!;
+    PLATE_BOLTS.set(k, bolts);
+  }
+  add(p, new THREE.Mesh(bolts, m.steel));
 }
 
 function ports(p: THREE.Object3D, w: number, h: number, input: boolean, output: boolean) {
   const m = mats();
   const oz = Math.floor(h / 2) + 0.5 - h / 2;
   if (output) {
-    const g = group(p, w / 2 - 0.12, 0.2, oz);
-    box(g, 0.24, 0.3, 0.62, m.steel, 0, 0.1, 0);
-    box(g, 0.05, 0.22, 0.48, m.darker, 0.11, 0.08, 0);
-    box(g, 0.05, 0.04, 0.5, m.orange, 0.12, 0.23, 0);
+    // Ausgabe-Haube mit Gummilamellen und oranger Kante
+    const g = group(p, w / 2 - 0.13, 0.16, oz);
+    box(g, 0.26, 0.34, 0.68, m.steel, 0, 0.17, 0);
+    box(g, 0.06, 0.24, 0.52, m.darker, 0.11, 0.12, 0);
+    for (let i = 0; i < 5; i++) box(g, 0.02, 0.2, 0.09, m.rubber, 0.145, 0.12, -0.2 + i * 0.1);
+    box(g, 0.28, 0.05, 0.72, m.orange, 0, 0.36, 0);
+    const r = cyl(g, 0.045, 0.045, 0.56, m.steel, 0.1, 0.03, 0, 10);
+    r.rotation.x = Math.PI / 2;
   }
   if (input) {
     for (let ly = 0; ly < h; ly++) {
       const z = ly + 0.5 - h / 2;
-      const g = group(p, -w / 2 + 0.12, 0.2, z);
-      box(g, 0.24, 0.26, 0.6, m.steel, 0, 0.08, 0);
-      box(g, 0.05, 0.18, 0.46, m.darker, -0.11, 0.06, 0);
-      box(g, 0.05, 0.04, 0.48, m.green, -0.12, 0.2, 0);
+      // Eingabe-Trichter mit grüner Kante
+      const g = group(p, -w / 2 + 0.13, 0.16, z);
+      box(g, 0.26, 0.3, 0.66, m.steel, 0, 0.15, 0);
+      box(g, 0.06, 0.2, 0.5, m.darker, -0.11, 0.1, 0);
+      box(g, 0.28, 0.05, 0.7, m.green, 0, 0.32, 0);
+      const r = cyl(g, 0.045, 0.045, 0.54, m.steel, -0.1, 0.03, 0, 10);
+      r.rotation.x = Math.PI / 2;
     }
   }
 }
 
+// Signalsäule: Fuß, Stange, Gehäuse, leuchtende Linse und Kappe
 function lampAt(p: THREE.Object3D, x: number, y: number, z: number): THREE.Mesh {
   const m = mats();
-  cyl(p, 0.025, 0.025, y, m.dark, x, y / 2, z, 6);
-  const lamp = sphere(p, 0.11, LAMP_MATS.idle, x, y + 0.06, z);
+  cyl(p, 0.07, 0.08, 0.04, m.darker, x, 0.18, z, 10);
+  cyl(p, 0.022, 0.022, y - 0.1, m.steel, x, 0.2 + (y - 0.2) / 2, z, 8);
+  cyl(p, 0.075, 0.075, 0.04, m.dark, x, y - 0.04, z, 14);
+  const lamp = cyl(p, 0.068, 0.068, 0.16, LAMP_MATS.idle, x, y + 0.06, z, 14);
   lamp.castShadow = false;
+  cyl(p, 0.078, 0.07, 0.035, m.dark, x, y + 0.155, z, 14);
   return lamp;
 }
 
@@ -427,8 +459,28 @@ function machineBody(d: THREE.Group, w: number, h: number, height: number, color
   const m = mats();
   basePlate(d, w, h);
   ports(d, w, h, true, true);
-  box(d, w - 0.55, height, h - 0.3, color, 0, 0.14 + height / 2, 0);
-  box(d, w - 0.5, 0.08, h - 0.25, m.dark, 0, 0.14 + height + 0.04, 0);
+  const bw = w - 0.55, bd = h - 0.3, y0 = 0.15;
+  // Sockelleiste + Gehäuse + Deckel
+  box(d, bw + 0.06, 0.08, bd + 0.06, m.darker, 0, y0 + 0.04, 0);
+  box(d, bw, height, bd, color, 0, y0 + height / 2 + 0.04, 0);
+  box(d, bw + 0.05, 0.07, bd + 0.05, m.dark, 0, y0 + height + 0.07, 0);
+  // Wartungsklappen vorn und hinten (Rahmen + Griff), Lüftungsgitter
+  const ph = Math.max(0.2, height - 0.2);
+  for (const sz of [1, -1]) {
+    const zf = sz * (bd / 2 + 0.012);
+    box(d, bw * 0.42, ph, 0.025, m.dark, -bw * 0.22, y0 + 0.04 + height / 2, zf);
+    box(d, bw * 0.38, ph - 0.05, 0.03, color, -bw * 0.22, y0 + 0.04 + height / 2, zf + sz * 0.004);
+    box(d, 0.03, Math.min(0.18, ph * 0.5), 0.04, m.steel, -bw * 0.06, y0 + 0.04 + height / 2, zf + sz * 0.02);
+    const vent = add(d, new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.3, Math.min(0.3, ph * 0.7)), m.vent), bw * 0.22, y0 + 0.04 + height / 2, zf + sz * 0.02);
+    if (sz < 0) vent.rotation.y = Math.PI;
+  }
+  // kleines Bedienfeld mit Bildschirm und Knöpfen an der Ecke
+  const cp = group(d, bw / 2 - 0.05, y0 + 0.04 + height * 0.55, bd / 2 + 0.05);
+  box(cp, 0.22, 0.2, 0.08, m.darker, 0, 0, 0);
+  box(cp, 0.15, 0.08, 0.01, m.screen, 0, 0.035, 0.042);
+  sphere(cp, 0.018, m.red, -0.05, -0.05, 0.045);
+  sphere(cp, 0.018, m.green, 0.0, -0.05, 0.045);
+  sphere(cp, 0.018, m.yellow, 0.05, -0.05, 0.045);
   // Inneres Band (Eingang -> Ausgang)
   box(d, w - 0.3, 0.06, 0.5, m.darker, 0, 0.2, Math.floor(h / 2) + 0.5 - h / 2);
 }

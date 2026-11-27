@@ -13,6 +13,7 @@ const NODE_Y = 0.27;      // Höhe des Kreuzungs-Decks
 
 interface TierMeshes {
   tex: THREE.Texture;
+  texCurve: THREE.Texture;
   surface: THREE.InstancedMesh[];
   frame: THREE.InstancedMesh[];
 }
@@ -34,18 +35,20 @@ export class BeltView {
   private yAxis = new THREE.Vector3(0, 1, 0);
 
   constructor() {
-    const geos = SHAPES.map((sh) => (sh === 0 ? straightBelt() : curveBelt(sh)));
     BELT_TIERS.forEach((tier) => {
+      const geos = SHAPES.map((sh) => (sh === 0 ? straightBelt(tier.color) : curveBelt(sh, tier.color)));
       const tex = beltTexture(tier.color);
-      const surfMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05, side: THREE.DoubleSide });
-      // Rahmen: Vertex-Farben machen die Schienen dunkel (getönt) und den Streifen voll farbig
+      const texCurve = beltTexture(tier.color, false); // in Kurven ohne Pfeile (würden verzerrt)
+      const surfMat = new THREE.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: 1.5, roughness: 0.82, metalness: 0.02, side: THREE.DoubleSide });
+      const curveMat = new THREE.MeshStandardMaterial({ map: texCurve, bumpMap: texCurve, bumpScale: 1.5, roughness: 0.82, metalness: 0.02, side: THREE.DoubleSide });
+      // Rahmen: Farben (Wangen in Stufenfarbe, Stahlkante, dunkles Bett) stecken in den Vertex-Farben
       const frameMat = new THREE.MeshStandardMaterial({
-        color: tier.color, vertexColors: true, roughness: 0.38, metalness: 0.6,
-        emissive: tier.name === 'Hyper' ? tier.color : '#000000', emissiveIntensity: 0.25,
+        color: '#ffffff', vertexColors: true, roughness: 0.35, metalness: 0.45,
+        emissive: tier.name === 'Hyper' ? tier.color : '#000000', emissiveIntensity: 0.18,
       });
       this.tiers.push({
-        tex,
-        surface: geos.map((g) => this.instanced(g.surface, surfMat, false)),
+        tex, texCurve,
+        surface: geos.map((g, i) => this.instanced(g.surface, i === 0 ? surfMat : curveMat, false)),
         frame: geos.map((g) => this.instanced(g.frame, frameMat, true)),
       });
     });
@@ -131,7 +134,7 @@ export class BeltView {
       this.rebuild(sim);
     }
     // Band-Textur läuft mit der Geschwindigkeit der Stufe
-    this.tiers.forEach((t, i) => { t.tex.offset.x = -((time * BELT_TIERS[i].speed) % 1); });
+    this.tiers.forEach((t, i) => { t.tex.offset.x = t.texCurve.offset.x = -((time * BELT_TIERS[i].speed) % 1); });
 
     // Bananen auf den Bändern
     const counts = new Array(this.stageMeshes.length).fill(0);

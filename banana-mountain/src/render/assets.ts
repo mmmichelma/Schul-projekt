@@ -268,9 +268,9 @@ function roundedProfile(w: number, h: number, r: number, steps = 3): [number, nu
 
 /*
  * Zieht ein Profil entlang eines Pfades (Mittellinie in x/z), mit festem „oben“.
- * offset = seitlicher Abstand von der Mittellinie, y = Höhe, shade = Helligkeit (Vertex-Farbe).
+ * offset = seitlicher Abstand von der Mittellinie, y = Höhe, color = Vertex-Farbe.
  */
-function sweep(path: THREE.Vector3[], profile: [number, number][], offset: number, y: number, shade: number): THREE.BufferGeometry {
+function sweep(path: THREE.Vector3[], profile: [number, number][], offset: number, y: number, color: THREE.Color): THREE.BufferGeometry {
   const pos: number[] = [], col: number[] = [], idx: number[] = [];
   const up = new THREE.Vector3(0, 1, 0);
   const n = profile.length;
@@ -281,7 +281,7 @@ function sweep(path: THREE.Vector3[], profile: [number, number][], offset: numbe
     for (const [sx, sy] of profile) {
       const v = path[i].clone().addScaledVector(side, offset + sx);
       pos.push(v.x, y + sy, v.z);
-      col.push(shade, shade, shade);
+      col.push(color.r, color.g, color.b);
     }
   }
   for (let i = 0; i < path.length - 1; i++) {
@@ -305,40 +305,96 @@ function sweep(path: THREE.Vector3[], profile: [number, number][], offset: numbe
   return g.toNonIndexed();
 }
 
-function leg(x: number, z: number): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.035, 0.045, 0.11, 10).translate(x, 0.055, z).toNonIndexed();
-  g.deleteAttribute('uv');
-  const arr = new Float32Array(g.attributes.position.count * 3).fill(0.28);
-  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-  return g;
+function paint(g: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry {
+  const ng = g.index ? g.toNonIndexed() : g;
+  if (ng.attributes.uv) ng.deleteAttribute('uv');
+  const arr = new Float32Array(ng.attributes.position.count * 3);
+  for (let i = 0; i < arr.length; i += 3) { arr[i] = color.r; arr[i + 1] = color.g; arr[i + 2] = color.b; }
+  ng.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return ng;
 }
 
-// Rahmen = Schienen (dunkel, getönt) + Streifen (volle Stufenfarbe) + Bett + Beine
-function beltFrame(path: THREE.Vector3[], legs: [number, number][]): THREE.BufferGeometry {
-  const rail = roundedProfile(0.075, 0.15, 0.025);
-  const stripe = roundedProfile(0.05, 0.02, 0.008, 2);
+const C_STEEL = new THREE.Color('#c3c9d1');
+const C_DARK = new THREE.Color('#2b2f36');
+const C_BED = new THREE.Color('#1d2026');
+const C_BOLT = new THREE.Color('#e6e9ee');
+
+// Standfuß: Stütze + Fußplatte
+function stand(x: number, z: number, yaw: number): THREE.BufferGeometry[] {
+  const post = rbox(0.07, 0.09, 0.12, 0.015).clone().translate(0, 0.075, 0);
+  const foot = rbox(0.13, 0.025, 0.2, 0.01).clone().translate(0, 0.0125, 0);
+  return [post, foot].map((g) => paint(g, C_DARK).rotateY(yaw).translate(x, 0, z));
+}
+
+/*
+ * Rahmen eines Bandfeldes: Seitenwangen (Stufenfarbe), Kantenschutz aus Stahl,
+ * Nieten, dunkles Bett, Rollen-Enden und Standfüße. Farben stecken in den Vertex-Farben.
+ */
+function beltFrame(path: THREE.Vector3[], color: string): THREE.BufferGeometry {
+  const tier = new THREE.Color(color);
+  const sideP = roundedProfile(0.05, 0.15, 0.012, 2);
+  const lip = roundedProfile(0.085, 0.035, 0.016, 3);
   const bed = roundedProfile(BELT_HALF * 2 + 0.02, 0.06, 0.015, 2);
-  const parts = [
-    sweep(path, rail, RAIL_OFF, 0.17, 0.34),
-    sweep(path, rail, -RAIL_OFF, 0.17, 0.34),
-    sweep(path, stripe, RAIL_OFF, 0.25, 1),
-    sweep(path, stripe, -RAIL_OFF, 0.25, 1),
-    sweep(path, bed, 0, 0.13, 0.18),
-    ...legs.map(([x, z]) => leg(x, z)),
+  const parts: THREE.BufferGeometry[] = [
+    sweep(path, sideP, RAIL_OFF, 0.155, tier),
+    sweep(path, sideP, -RAIL_OFF, 0.155, tier),
+    sweep(path, lip, RAIL_OFF - 0.008, 0.245, C_STEEL),
+    sweep(path, lip, -RAIL_OFF + 0.008, 0.245, C_STEEL),
+    sweep(path, bed, 0, 0.13, C_BED),
   ];
-  return mergeGeometries(parts)!;
+  const up = new THREE.Vector3(0, 1, 0);
+  const at = (t: number) => {
+    const f = t * (path.length - 1), i = Math.min(path.length - 2, Math.floor(f)), k = f - i;
+    const pnt = path[i].clone().lerp(path[i + 1], k);
+    const tan = path[i + 1].clone().sub(path[i]).normalize();
+    const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+    return { pnt, tan, side };
+  };
+  // Nieten außen an den Wangen
+  const rivet = new THREE.CylinderGeometry(0.014, 0.016, 0.012, 8);
+  for (const t of [0.17, 0.5, 0.83]) {
+    const { pnt, side } = at(t);
+    for (const sgn of [1, -1]) {
+      const o = sgn * (RAIL_OFF + 0.027);
+      const g = paint(rivet.clone(), C_BOLT);
+      g.rotateZ(Math.PI / 2);
+      g.rotateY(Math.atan2(-side.z, side.x));
+      g.translate(pnt.x + side.x * o, 0.155, pnt.z + side.z * o);
+      parts.push(g);
+    }
+  }
+  // Achsen der Umlenkrollen an beiden Enden (kleine Stahlkappen außen)
+  for (const t of [0.02, 0.98]) {
+    const { pnt, side } = at(t);
+    for (const sgn of [1, -1]) {
+      const o = sgn * (RAIL_OFF + 0.03);
+      const g = paint(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 12), C_STEEL);
+      g.rotateZ(Math.PI / 2);
+      g.rotateY(Math.atan2(-side.z, side.x));
+      g.translate(pnt.x + side.x * o, 0.165, pnt.z + side.z * o);
+      parts.push(g);
+    }
+  }
+  // Standfüße in der Mitte
+  const { pnt, side } = at(0.5);
+  const yaw = Math.atan2(-side.z, side.x);
+  for (const sgn of [1, -1]) {
+    const o = sgn * (RAIL_OFF - 0.01);
+    parts.push(...stand(pnt.x + side.x * o, pnt.z + side.z * o, yaw));
+  }
+  return mergeGeometries(parts.map((g) => { if (g.attributes.uv) g.deleteAttribute('uv'); if (g.attributes.uv1) g.deleteAttribute('uv1'); return g; }))!;
 }
 
-export function straightBelt(): { surface: THREE.BufferGeometry; frame: THREE.BufferGeometry } {
+export function straightBelt(color = '#f2c230'): { surface: THREE.BufferGeometry; frame: THREE.BufferGeometry } {
   const surface = new THREE.PlaneGeometry(1, BELT_HALF * 2);
   surface.rotateX(-Math.PI / 2);
   surface.translate(0, BELT_Y, 0);
   const path = [new THREE.Vector3(-0.5, 0, 0), new THREE.Vector3(0.5, 0, 0)];
-  return { surface, frame: beltFrame(path, [[0, RAIL_OFF], [0, -RAIL_OFF]]) };
+  return { surface, frame: beltFrame(path, color) };
 }
 
 // Kurve: rel = 1 (kommt von „oben“, z = −0.5) oder 3 (von unten) – fein unterteilt und glatt
-export function curveBelt(rel: number): { surface: THREE.BufferGeometry; frame: THREE.BufferGeometry } {
+export function curveBelt(rel: number, color = '#f2c230'): { surface: THREE.BufferGeometry; frame: THREE.BufferGeometry } {
   const cz = rel === 1 ? -0.5 : 0.5;
   const cx = 0.5;
   const N = 20;
@@ -366,9 +422,7 @@ export function curveBelt(rel: number): { surface: THREE.BufferGeometry; frame: 
   // Mittellinie des Bogens (Radius 0,5 um die Ecke)
   const path: THREE.Vector3[] = [];
   for (let s = 0; s <= N; s++) { const a = ang(s / N); path.push(new THREE.Vector3(cx + Math.cos(a) * 0.5, 0, cz + Math.sin(a) * 0.5)); }
-  const mid = ang(0.5);
-  const legs: [number, number][] = [ri - 0.04, ro + 0.04].map((r) => [cx + Math.cos(mid) * r, cz + Math.sin(mid) * r] as [number, number]);
-  return { surface, frame: beltFrame(path, legs) };
+  return { surface, frame: beltFrame(path, color) };
 }
 
 // Position einer Banane auf dem Band (lokal), p = 0..1
@@ -422,21 +476,41 @@ export function floorTexture() {
   });
 }
 
-export function beltTexture(accent: string) {
-  return canvasTexture(128, 128, (ctx) => {
-    ctx.fillStyle = '#2a2d33';
-    ctx.fillRect(0, 0, 128, 128);
-    for (let i = 0; i < 8; i++) {
-      ctx.fillStyle = i % 2 ? '#25282e' : '#30343b';
-      ctx.fillRect(i * 16, 0, 16, 128);
+export function beltTexture(accent: string, arrows = true) {
+  return canvasTexture(256, 128, (ctx) => {
+    const r = rand(11);
+    ctx.fillStyle = '#26292f';
+    ctx.fillRect(0, 0, 256, 128);
+    // Gummi-Körnung
+    for (let i = 0; i < 1400; i++) {
+      const v = 30 + r() * 26;
+      ctx.fillStyle = `rgba(${v},${v + 2},${v + 5},0.5)`;
+      ctx.fillRect(r() * 256, r() * 128, 1 + r() * 2, 1);
     }
+    // Querrippen mit Licht- und Schattenkante
+    for (let x = 0; x < 256; x += 16) {
+      ctx.fillStyle = '#3a3e46';
+      ctx.fillRect(x, 8, 5, 112);
+      ctx.fillStyle = 'rgba(255,255,255,0.09)';
+      ctx.fillRect(x, 8, 1.5, 112);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + 5, 8, 2, 112);
+    }
+    // Ränder des Gurtes etwas dunkler
+    const g = ctx.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, 'rgba(0,0,0,0.45)'); g.addColorStop(0.09, 'rgba(0,0,0,0)');
+    g.addColorStop(0.91, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 128);
+    // dezente Laufrichtungs-Pfeile in der Stufenfarbe
+    if (!arrows) return;
     ctx.strokeStyle = accent;
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 9;
-    ctx.lineJoin = 'round';
-    for (const x of [24, 88]) {
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 6;
+    ctx.lineJoin = ctx.lineCap = 'round';
+    for (const x of [52, 180]) {
       ctx.beginPath();
-      ctx.moveTo(x, 30); ctx.lineTo(x + 26, 64); ctx.lineTo(x, 98);
+      ctx.moveTo(x, 44); ctx.lineTo(x + 16, 64); ctx.lineTo(x, 84);
       ctx.stroke();
     }
   });
@@ -523,6 +597,77 @@ export function bananaPileTexture() {
       }
     }
   });
+}
+
+// Lack mit leichter Körnung und abgenutzten Kanten (weiß – wird mit der Materialfarbe multipliziert)
+export function paintTexture() {
+  return canvasTexture(256, 256, (ctx) => {
+    const r = rand(23);
+    ctx.fillStyle = '#f4f4f4';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 3000; i++) {
+      const v = 215 + r() * 40;
+      ctx.fillStyle = `rgba(${v},${v},${v},0.35)`;
+      ctx.fillRect(r() * 256, r() * 256, 1 + r() * 2, 1 + r() * 2);
+    }
+    // Rand etwas dunkler (wirkt wie Kantenschatten / Schmutz)
+    const g = ctx.createRadialGradient(128, 128, 90, 128, 128, 190);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(60,55,50,0.28)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+    // ein paar feine Kratzer
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 14; i++) {
+      const x = r() * 256, y = r() * 256, a = r() * Math.PI;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (6 + r() * 14), y + Math.sin(a) * (6 + r() * 14)); ctx.stroke();
+    }
+  });
+}
+
+// Gebürsteter Stahl (Rauheit-Karte)
+export function brushedTexture() {
+  const t = canvasTexture(256, 256, (ctx) => {
+    const r = rand(5);
+    ctx.fillStyle = '#8a8a8a';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i++) {
+      const v = 100 + r() * 90;
+      ctx.fillStyle = `rgba(${v},${v},${v},0.5)`;
+      ctx.fillRect(r() * 256, r() * 256, 20 + r() * 80, 1);
+    }
+  });
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+
+// Riffelblech (Tränenblech) für Bodenplatten
+export function treadTexture() {
+  return canvasTexture(128, 128, (ctx) => {
+    ctx.fillStyle = '#5a616b';
+    ctx.fillRect(0, 0, 128, 128);
+    const tear = (x: number, y: number, a: number) => {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(1, 1.5, 7, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#7d8590'; ctx.beginPath(); ctx.ellipse(0, 0, 7, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.ellipse(-1, -0.8, 5, 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    };
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) tear(x * 16 + (y % 2) * 8 + 4, y * 16 + 8, (x + y) % 2 ? Math.PI / 4 : -Math.PI / 4);
+  });
+}
+
+// Lüftungsgitter
+export function ventTexture() {
+  return canvasTexture(64, 64, (ctx) => {
+    ctx.fillStyle = '#30353c';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let y = 6; y < 60; y += 8) {
+      ctx.fillStyle = '#0c0e11'; ctx.fillRect(6, y, 52, 4);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(6, y + 4, 52, 1);
+    }
+  }, false);
 }
 
 export function hazardTexture() {

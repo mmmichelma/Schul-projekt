@@ -805,6 +805,7 @@ export class Sim {
   // ================================================================ Netzwerk (Reihenfolge der Bänder)
   private rebuild() {
     this.netDirty = false;
+    this.structVersion++; // Kurven ändern sich hier – Grafik danach neu aufbauen
     const belts: Belt[] = [];
     this.buildings = [];
     for (const e of this.ents.values()) {

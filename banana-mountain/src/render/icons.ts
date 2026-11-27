@@ -52,11 +52,11 @@ export async function renderIcons(): Promise<IconMap> {
   const visuals = stageVisuals();
   BELT_TIERS.forEach((tier, i) => {
     const g = new THREE.Group();
-    const { surface, frame } = straightBelt();
+    const { surface, frame } = straightBelt(tier.color);
     const tex = beltTexture(tier.color);
     for (const dx of [-1, 0, 1]) {
       const s = new THREE.Mesh(surface, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
-      const f = new THREE.Mesh(frame, new THREE.MeshStandardMaterial({ color: tier.color, vertexColors: true, metalness: 0.6, roughness: 0.38 }));
+      const f = new THREE.Mesh(frame, new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, metalness: 0.45, roughness: 0.35 }));
       s.position.x = f.position.x = dx;
       g.add(s, f);
     }
