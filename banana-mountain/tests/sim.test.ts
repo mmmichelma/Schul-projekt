@@ -117,6 +117,28 @@ describe('Bananen-Base', () => {
     expect(sim.get(base.id)).toBeTruthy();
     expect(sim.isSellStation(base.id)).toBe(true);
   });
+
+  it('Band, das an der Base vorbeiläuft und daneben endet, verkauft trotzdem', () => {
+    const sim = Sim.newGame();
+    sim.money = 1000;
+    const base = sim.buildingList().find((b) => b.type === 'base')!;
+    // Band läuft unterhalb der Base nach Osten und endet vor ihr – zeigt also nicht hinein
+    const y = base.y + base.h;
+    for (let x = base.x - 3; x <= base.x + 1; x++) expect(sim.placeBelt(x, y, 0, 0)).toBeTruthy();
+    // Das Feld vor dem letzten Band ist frei? Dann endet es ins Leere -> Base daneben übernimmt
+    const last = sim.entAt(base.x + 1, y)!;
+    expect(last.kind).toBe('belt');
+    // zwei Bananen aus dem Berg auf das erste Band legen
+    sim.manualTake(-1);
+    sim.manual.slots.pop();
+    const first = sim.entAt(base.x - 3, y)!;
+    if (first.kind === 'belt') first.items.push({ s: 0, q: 1, p: 0.6, dp: 0 });
+    (sim as unknown as { inFactory: number }).inFactory++;
+    expect(sim.audit().total).toBe(TOTAL);
+    for (let i = 0; i < 20 * SIM_HZ; i++) sim.step();
+    expect(base.processed).toBe(1);
+    expect(sim.audit().total).toBe(TOTAL);
+  });
 });
 
 describe('Fabrik', () => {

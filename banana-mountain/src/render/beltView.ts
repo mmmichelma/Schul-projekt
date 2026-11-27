@@ -38,9 +38,10 @@ export class BeltView {
     BELT_TIERS.forEach((tier) => {
       const tex = beltTexture(tier.color);
       const surfMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05, side: THREE.DoubleSide });
+      // Rahmen: Vertex-Farben machen die Schienen dunkel (getönt) und den Streifen voll farbig
       const frameMat = new THREE.MeshStandardMaterial({
-        color: tier.color, roughness: 0.45, metalness: 0.55,
-        emissive: tier.name === 'Hyper' ? tier.color : '#000000', emissiveIntensity: 0.35,
+        color: tier.color, vertexColors: true, roughness: 0.38, metalness: 0.6,
+        emissive: tier.name === 'Hyper' ? tier.color : '#000000', emissiveIntensity: 0.25,
       });
       this.tiers.push({
         tex,

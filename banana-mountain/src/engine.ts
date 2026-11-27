@@ -4,7 +4,7 @@
 import { ls } from './storage/local';
 import { startMusic, setVolumes, setFactoryActivity } from './ui/music';
 import { sfx } from './ui/sound';
-import { Sim, Blueprint, rotatedSize, Ent, LOCAL, Manual } from './sim/sim';
+import { Sim, Blueprint, rotatedSize, Ent, LOCAL, Manual, inputCells } from './sim/sim';
 import { Cmd, applyCmd, validCmd, simHash } from './sim/commands';
 import { Online, WorldLink, OnlineUser } from './net/online';
 import { BUILDINGS, BELT_TIERS, DT, DX, DY, ManualUpgradeId, STAGES } from './sim/defs';
@@ -917,9 +917,27 @@ export class Engine {
       let dir = t.dir;
       if (i < p.length - 1) dir = dirBetween(c, p[i + 1]);
       else if (i > 0) dir = dirBetween(p[i - 1], c);
+      // Letztes Feld: in ein angrenzendes Gebäude zeigen, das Bananen annimmt
+      if (i === p.length - 1) {
+        const into = this.acceptingNeighbor(c.x, c.y, dir);
+        if (into >= 0) dir = into;
+      }
       const e = this.sim.entAt(c.x, c.y);
       return { x: c.x, y: c.y, dir, ok: this.sim.cellFree(c.x, c.y) || (!!e && e.kind === 'belt') };
     });
+  }
+
+  // Richtung zu einem Nachbargebäude, das von hier etwas annehmen würde (-1 = keins)
+  private acceptingNeighbor(x: number, y: number, pref: number): number {
+    const order = [pref, (pref + 1) % 4, (pref + 3) % 4];
+    for (const d of order) {
+      const e = this.sim.entAt(x + DX[d], y + DY[d]);
+      if (!e || e.kind !== 'building') continue;
+      const cat = BUILDINGS[e.type].category;
+      if (cat === 'sell') return d;
+      if ((cat === 'machine' || cat === 'storage') && e.dir === d && inputCells(e).some(([ix, iy]) => ix === x && iy === y)) return d;
+    }
+    return -1;
   }
 
   private updatePreview() {

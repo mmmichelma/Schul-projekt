@@ -815,6 +815,14 @@ export class Sim {
     return this.buildingAccept(e, it, moveDir);
   }
 
+  private pushToSideSeller(b: Belt, it: Item): boolean {
+    for (const s of [(b.dir + 1) % 4, (b.dir + 3) % 4]) {
+      const e = this.entAt(b.x + DX[s], b.y + DY[s]);
+      if (e && e.kind === 'building' && BUILDINGS[e.type].category === 'sell' && this.buildingAccept(e, it, s)) return true;
+    }
+    return false;
+  }
+
   private beltAccept(b: Belt, it: Item, moveDir: number, p0: number): boolean {
     if (b.dir === (moveDir + 2) % 4) return false; // frontal
     const tier = BELT_TIERS[b.tier];
@@ -962,12 +970,15 @@ export class Sim {
     const dv = tier.speed * DT;
     const spacing = 1 / tier.cap;
     // 1) Bananen, die das Ende erreichen, weitergeben
+    // Endet das Band ins Leere, liefert es an eine Verkaufsstation daneben (Band läuft an der Base vorbei)
+    const fx = b.x + DX[b.dir], fy = b.y + DY[b.dir];
+    const deadEnd = inBounds(fx, fy) && !this.tiles[tileIndex(fx, fy)];
     let k = 0;
     while (k < items.length) {
       const it = items[k];
       const np = it.p + dv;
       if (np < 1) break;
-      if (!this.pushInto(b.x + DX[b.dir], b.y + DY[b.dir], b.dir, it, np - 1)) break;
+      if (!this.pushInto(fx, fy, b.dir, it, np - 1) && !(deadEnd && this.pushToSideSeller(b, it))) break;
       k++;
     }
     if (k) items.splice(0, k);

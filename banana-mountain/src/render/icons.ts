@@ -56,7 +56,7 @@ export async function renderIcons(): Promise<IconMap> {
     const tex = beltTexture(tier.color);
     for (const dx of [-1, 0, 1]) {
       const s = new THREE.Mesh(surface, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
-      const f = new THREE.Mesh(frame, new THREE.MeshStandardMaterial({ color: tier.color, metalness: 0.5, roughness: 0.4 }));
+      const f = new THREE.Mesh(frame, new THREE.MeshStandardMaterial({ color: tier.color, vertexColors: true, metalness: 0.6, roughness: 0.38 }));
       s.position.x = f.position.x = dx;
       g.add(s, f);
     }

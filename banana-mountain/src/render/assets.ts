@@ -250,36 +250,103 @@ export function gearGeometry(r: number, teeth: number, thick: number): THREE.Buf
 // ---------------------------------------------------------------- Förderband-Geometrien
 // Lokal: Bewegung nach +x, Mitte des Feldes = Ursprung, z = Raster-y
 export const BELT_Y = 0.17;
-const BELT_HALF = 0.38;
+const BELT_HALF = 0.39;
+const RAIL_OFF = 0.43;
+
+// Querschnitt (Profil) mit abgerundeten Ecken: Punkte in (Seite, Höhe)
+function roundedProfile(w: number, h: number, r: number, steps = 3): [number, number][] {
+  const pts: [number, number][] = [];
+  const corners: [number, number, number][] = [[w / 2 - r, h / 2 - r, 0], [-w / 2 + r, h / 2 - r, Math.PI / 2], [-w / 2 + r, -h / 2 + r, Math.PI], [w / 2 - r, -h / 2 + r, Math.PI * 1.5]];
+  for (const [cx, cy, a0] of corners) {
+    for (let i = 0; i <= steps; i++) {
+      const a = a0 + (i / steps) * (Math.PI / 2);
+      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+  }
+  return pts;
+}
+
+/*
+ * Zieht ein Profil entlang eines Pfades (Mittellinie in x/z), mit festem „oben“.
+ * offset = seitlicher Abstand von der Mittellinie, y = Höhe, shade = Helligkeit (Vertex-Farbe).
+ */
+function sweep(path: THREE.Vector3[], profile: [number, number][], offset: number, y: number, shade: number): THREE.BufferGeometry {
+  const pos: number[] = [], col: number[] = [], idx: number[] = [];
+  const up = new THREE.Vector3(0, 1, 0);
+  const n = profile.length;
+  for (let i = 0; i < path.length; i++) {
+    const prev = path[Math.max(0, i - 1)], next = path[Math.min(path.length - 1, i + 1)];
+    const tan = next.clone().sub(prev).normalize();
+    const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+    for (const [sx, sy] of profile) {
+      const v = path[i].clone().addScaledVector(side, offset + sx);
+      pos.push(v.x, y + sy, v.z);
+      col.push(shade, shade, shade);
+    }
+  }
+  for (let i = 0; i < path.length - 1; i++) {
+    for (let k = 0; k < n; k++) {
+      const a = i * n + k, b = i * n + ((k + 1) % n), c = a + n, d = b + n;
+      idx.push(a, b, c, b, d, c);
+    }
+  }
+  // Enden zu
+  for (const [ring, flip] of [[0, true], [path.length - 1, false]] as [number, boolean][]) {
+    for (let k = 1; k < n - 1; k++) {
+      const a = ring * n, b = ring * n + k, c = ring * n + k + 1;
+      if (flip) idx.push(a, c, b); else idx.push(a, b, c);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g.toNonIndexed();
+}
+
+function leg(x: number, z: number): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.035, 0.045, 0.11, 10).translate(x, 0.055, z).toNonIndexed();
+  g.deleteAttribute('uv');
+  const arr = new Float32Array(g.attributes.position.count * 3).fill(0.28);
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return g;
+}
+
+// Rahmen = Schienen (dunkel, getönt) + Streifen (volle Stufenfarbe) + Bett + Beine
+function beltFrame(path: THREE.Vector3[], legs: [number, number][]): THREE.BufferGeometry {
+  const rail = roundedProfile(0.075, 0.15, 0.025);
+  const stripe = roundedProfile(0.05, 0.02, 0.008, 2);
+  const bed = roundedProfile(BELT_HALF * 2 + 0.02, 0.06, 0.015, 2);
+  const parts = [
+    sweep(path, rail, RAIL_OFF, 0.17, 0.34),
+    sweep(path, rail, -RAIL_OFF, 0.17, 0.34),
+    sweep(path, stripe, RAIL_OFF, 0.25, 1),
+    sweep(path, stripe, -RAIL_OFF, 0.25, 1),
+    sweep(path, bed, 0, 0.13, 0.18),
+    ...legs.map(([x, z]) => leg(x, z)),
+  ];
+  return mergeGeometries(parts)!;
+}
 
 export function straightBelt(): { surface: THREE.BufferGeometry; frame: THREE.BufferGeometry } {
   const surface = new THREE.PlaneGeometry(1, BELT_HALF * 2);
   surface.rotateX(-Math.PI / 2);
   surface.translate(0, BELT_Y, 0);
-  const frame = mergeGeometries([
-    new THREE.BoxGeometry(1, 0.12, BELT_HALF * 2).translate(0, 0.07, 0).toNonIndexed(),
-    rboxCopy(1.0, 0.1, 0.07, 0.025).translate(0, 0.18, BELT_HALF + 0.035),
-    rboxCopy(1.0, 0.1, 0.07, 0.025).translate(0, 0.18, -BELT_HALF - 0.035),
-    // Rollen an den Enden
-    new THREE.CylinderGeometry(0.05, 0.05, BELT_HALF * 2, 16).rotateX(Math.PI / 2).translate(-0.46, 0.12, 0).toNonIndexed(),
-    new THREE.CylinderGeometry(0.05, 0.05, BELT_HALF * 2, 16).rotateX(Math.PI / 2).translate(0.46, 0.12, 0).toNonIndexed(),
-    rboxCopy(0.08, 0.06, 0.06, 0.02).translate(-0.45, 0.02, 0.36),
-    rboxCopy(0.08, 0.06, 0.06, 0.02).translate(-0.45, 0.02, -0.36),
-  ].map((g) => { g.deleteAttribute('uv'); return g; }))!;
-  return { surface, frame };
+  const path = [new THREE.Vector3(-0.5, 0, 0), new THREE.Vector3(0.5, 0, 0)];
+  return { surface, frame: beltFrame(path, [[0, RAIL_OFF], [0, -RAIL_OFF]]) };
 }
 
-// Kurve: rel = 1 (kommt von „oben“, z = −0.5) oder 3 (von unten)
+// Kurve: rel = 1 (kommt von „oben“, z = −0.5) oder 3 (von unten) – fein unterteilt und glatt
 export function curveBelt(rel: number): { surface: THREE.BufferGeometry; frame: THREE.BufferGeometry } {
-  const sgn = rel === 1 ? -1 : 1;
-  const cx = 0.5, cz = 0.5 * sgn;
-  const N = 10;
-  // rel 1: a = π − t·π/2 ; rel 3: a = π + t·π/2
-  const ang = (s: number) => (rel === 1 ? Math.PI - (s / N) * (Math.PI / 2) : Math.PI + (s / N) * (Math.PI / 2));
+  const cz = rel === 1 ? -0.5 : 0.5;
+  const cx = 0.5;
+  const N = 20;
+  const ang = (t: number) => (rel === 1 ? Math.PI - t * (Math.PI / 2) : Math.PI + t * (Math.PI / 2));
   const ri = 0.5 - BELT_HALF, ro = 0.5 + BELT_HALF;
   const pos: number[] = [], uv: number[] = [], idx: number[] = [];
   for (let s = 0; s <= N; s++) {
-    const a = ang(s);
+    const a = ang(s / N);
     for (const [r, v] of [[ri, 0], [ro, 1]]) {
       pos.push(cx + Math.cos(a) * r, BELT_Y, cz + Math.sin(a) * r);
       uv.push(s / N, v);
@@ -294,22 +361,14 @@ export function curveBelt(rel: number): { surface: THREE.BufferGeometry; frame: 
   surface.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   surface.setIndex(idx);
   surface.computeVertexNormals();
-  // Normale nach oben erzwingen
   const nrm = surface.attributes.normal;
   for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0);
-
-  const parts: THREE.BufferGeometry[] = [];
-  for (let s = 0; s < N; s++) {
-    const a = (ang(s) + ang(s + 1)) / 2;
-    const seglen = (Math.PI / 2 / N);
-    for (const [r, h, y, w] of [[ri - 0.035, 0.1, 0.18, 0.07], [ro + 0.035, 0.1, 0.18, 0.07], [0.5, 0.12, 0.07, BELT_HALF * 2]]) {
-      const box = new THREE.BoxGeometry(seglen * r * 1.15 + 0.01, h, w);
-      box.rotateY(-a - Math.PI / 2);
-      box.translate(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r);
-      parts.push(box);
-    }
-  }
-  return { surface, frame: mergeGeometries(parts)! };
+  // Mittellinie des Bogens (Radius 0,5 um die Ecke)
+  const path: THREE.Vector3[] = [];
+  for (let s = 0; s <= N; s++) { const a = ang(s / N); path.push(new THREE.Vector3(cx + Math.cos(a) * 0.5, 0, cz + Math.sin(a) * 0.5)); }
+  const mid = ang(0.5);
+  const legs: [number, number][] = [ri - 0.04, ro + 0.04].map((r) => [cx + Math.cos(mid) * r, cz + Math.sin(mid) * r] as [number, number]);
+  return { surface, frame: beltFrame(path, legs) };
 }
 
 // Position einer Banane auf dem Band (lokal), p = 0..1
