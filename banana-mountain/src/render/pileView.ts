@@ -12,6 +12,7 @@ import { bananaGeometry, bananaBunchGeometry, bananaPileTexture } from './assets
 
 const CHUNK = 8;
 const MAX_PER_TILE = 3;
+const EXTRA_PER_TILE = 4; // zusätzliche Bananen ganz in der Nähe der Kamera
 
 function hash(a: number, b: number) {
   let n = Math.imul(a, 374761393) + Math.imul(b, 668265263);
@@ -31,6 +32,7 @@ interface Chunk {
   cy: number;
   mesh: THREE.InstancedMesh;   // einzelne Bananen
   bunch: THREE.InstancedMesh;  // Bananenbüschel
+  extra: THREE.InstancedMesh;  // dichte Lage für die Nähe
   dirty: boolean;
   center: THREE.Vector3;
 }
@@ -48,9 +50,9 @@ export class PileView {
   private normalsDirty = false;
   private normalsTimer = 0;
   // Wenig Polygone: davon gibt es tausende auf dem Berg
-  private bananaGeo = bananaGeometry({ len: 0.95, radius: 0.12, bend: 0.24, seg: 8, radial: 7 });
-  private bunchGeo = bananaBunchGeometry(3, { len: 0.85, radius: 0.11, bend: 0.22, seg: 7, radial: 6 });
-  private bananaMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 });
+  private bananaGeo = bananaGeometry({ len: 0.95, radius: 0.12, bend: 0.24, seg: 10, radial: 8, green: 0.3 });
+  private bunchGeo = bananaBunchGeometry(3, { len: 0.85, radius: 0.11, bend: 0.22, seg: 8, radial: 7, green: 0.35 });
+  private bananaMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0, envMapIntensity: 0.55 });
   lodDistance = 95;
   instancesVisible = true;
 
@@ -61,7 +63,7 @@ export class PileView {
 
   dispose() {
     this.geo.dispose();
-    for (const c of this.chunks) { c.mesh.dispose(); c.bunch.dispose(); }
+    for (const c of this.chunks) { c.mesh.dispose(); c.bunch.dispose(); c.extra.dispose(); }
     this.group.clear();
   }
 
@@ -107,7 +109,24 @@ export class PileView {
     this.geo.computeVertexNormals();
     this.geo.computeBoundingSphere();
     const tex = bananaPileTexture();
-    this.mesh = new THREE.Mesh(this.geo, new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.62, metalness: 0 }));
+    const mat = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.75, metalness: 0, envMapIntensity: 0.35 });
+    // Dreiseitige Projektion: an steilen Hängen wird die Textur nicht mehr in Streifen gezogen
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTpPos;\nvarying vec3 vTpN;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTpPos = (modelMatrix * vec4(position, 1.0)).xyz;\nvTpN = normalize(mat3(modelMatrix) * normal);');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTpPos;\nvarying vec3 vTpN;')
+        .replace('#include <map_fragment>', `
+          vec3 tpW = pow(abs(normalize(vTpN)), vec3(10.0));
+          tpW /= (tpW.x + tpW.y + tpW.z);
+          vec2 tpOff = vec2(0.37, 0.61);
+          vec4 sampledDiffuseColor = texture2D(map, vTpPos.zy / 5.0 + tpOff) * tpW.x
+            + texture2D(map, vTpPos.xz / 5.0) * tpW.y
+            + texture2D(map, vTpPos.xy / 5.0 + tpOff.yx) * tpW.z;
+          diffuseColor *= sampledDiffuseColor;`);
+    };
+    this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.receiveShadow = true;
     this.mesh.castShadow = true;
     this.group.add(this.mesh);
@@ -127,8 +146,15 @@ export class PileView {
         };
         const mesh = make(this.bananaGeo);
         const bunch = make(this.bunchGeo);
-        this.group.add(bunch);
-        const c: Chunk = { cx, cy, mesh, bunch, dirty: true, center: new THREE.Vector3((cx + 0.5) * CHUNK, 4, (cy + 0.5) * CHUNK) };
+        const extra = new THREE.InstancedMesh(this.bananaGeo, this.bananaMat, CHUNK * CHUNK * EXTRA_PER_TILE);
+        extra.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        extra.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CHUNK * CHUNK * EXTRA_PER_TILE * 3), 3);
+        extra.castShadow = false;
+        extra.receiveShadow = true;
+        extra.frustumCulled = false;
+        extra.count = 0;
+        this.group.add(bunch, extra);
+        const c: Chunk = { cx, cy, mesh, bunch, extra, dirty: true, center: new THREE.Vector3((cx + 0.5) * CHUNK, 4, (cy + 0.5) * CHUNK) };
         this.chunks.push(c);
         this.chunkByKey.set(cy * 1000 + cx, c);
         this.group.add(mesh);
@@ -157,7 +183,7 @@ export class PileView {
     const h = max > 0 ? avg : avg > 0.15 ? avg * 0.6 : -0.08;
     pos[k * 3 + 1] = h;
     // Tiefer = dunkler (Schatten zwischen den Bananen)
-    const shade = h > 0 ? 0.72 + Math.min(0.28, h * 0.03) + hash(x, y) * 0.06 : 0.5;
+    const shade = h > 0 ? 0.62 + Math.min(0.3, h * 0.035) + hash(x, y) * 0.08 : 0.45;
     col[k * 3] = shade;
     col[k * 3 + 1] = shade * 0.97;
     col[k * 3 + 2] = shade * 0.9;
@@ -182,12 +208,36 @@ export class PileView {
     c.dirty = false;
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
+    const qs = new THREE.Quaternion();
     const e = new THREE.Euler();
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
+    const nrm = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
     const color = new THREE.Color();
-    let n = 0, nb = 0;
+    let n = 0, nb = 0, ne = 0;
     const x0 = c.cx * CHUNK, y0 = c.cy * CHUNK;
+    // Banane liegt auf dem Hang: nach der Flächennormale ausrichten
+    const place = (ti: number, b: number, px: number, pz: number, count: number) => {
+      const r3 = hash(ti, b * 7 + 3), r4 = hash(ti, b * 7 + 4);
+      const h = count < 4 ? 0.1 : this.surfaceHeight(px, pz);
+      if (count < 4) nrm.copy(up);
+      else {
+        const d = 0.35;
+        nrm.set(this.surfaceHeight(px - d, pz) - this.surfaceHeight(px + d, pz), 2 * d, this.surfaceHeight(px, pz - d) - this.surfaceHeight(px, pz + d)).normalize();
+      }
+      qs.setFromUnitVectors(up, nrm);
+      e.set((r3 - 0.5) * 0.5, r4 * Math.PI * 2, (hash(ti, b * 7 + 5) - 0.5) * 0.5);
+      q.setFromEuler(e).premultiply(qs);
+      p.set(px, h, pz).addScaledVector(nrm, 0.07);
+      const sc = 0.9 + hash(ti, b * 7 + 6) * 0.35;
+      s.set(sc, sc, sc);
+      m.compose(p, q, s);
+      const tone = hash(ti, b * 7 + 8);
+      if (tone < 0.08) color.setRGB(0.85, 1, 0.7);            // noch etwas grün
+      else if (tone < 0.18) color.setRGB(1, 0.83, 0.62);      // sehr reif
+      else color.setRGB(0.92 + tone * 0.08, 0.92 + tone * 0.08, 0.92 + tone * 0.08);
+    };
     for (let y = y0; y < y0 + CHUNK; y++) {
       for (let x = x0; x < x0 + CHUNK; x++) {
         if (x >= MAP_W || y >= MAP_H) continue;
@@ -195,28 +245,27 @@ export class PileView {
         const count = this.sim.pile[ti];
         const k = bananasForCount(count);
         for (let b = 0; b < k; b++) {
-          const r1 = hash(ti, b * 7 + 1), r2 = hash(ti, b * 7 + 2), r3 = hash(ti, b * 7 + 3), r4 = hash(ti, b * 7 + 4);
-          const px = x + 0.1 + r1 * 0.8, pz = y + 0.1 + r2 * 0.8;
-          const h = count < 4 ? 0.1 : this.surfaceHeight(px, pz);
-          p.set(px, h + 0.02, pz);
-          e.set((r3 - 0.5) * 0.7, r4 * Math.PI * 2, (hash(ti, b * 7 + 5) - 0.5) * 0.7);
-          q.setFromEuler(e);
-          const sc = 0.9 + hash(ti, b * 7 + 6) * 0.35;
-          s.set(sc, sc, sc);
-          m.compose(p, q, s);
-          const tone = hash(ti, b * 7 + 8);
-          if (tone < 0.08) color.setRGB(0.85, 1, 0.7);            // noch etwas grün
-          else if (tone < 0.15) color.setRGB(1, 0.85, 0.65);      // sehr reif
-          else color.setRGB(0.94 + tone * 0.06, 0.94 + tone * 0.06, 0.94 + tone * 0.06);
+          const px = x + 0.1 + hash(ti, b * 7 + 1) * 0.8, pz = y + 0.1 + hash(ti, b * 7 + 2) * 0.8;
+          place(ti, b, px, pz, count);
           // Auf dicken Stellen liegen ganze Büschel, am Rand einzelne Bananen
           if (count >= 30 && b % 2 === 0) { c.bunch.setMatrixAt(nb, m); c.bunch.setColorAt(nb, color); nb++; }
           else { c.mesh.setMatrixAt(n, m); c.mesh.setColorAt(n, color); n++; }
+        }
+        // dichte Lage in der Nähe (nur wo genug Bananen liegen)
+        if (count >= 8) {
+          for (let b = 0; b < EXTRA_PER_TILE; b++) {
+            const bb = b + 10;
+            const px = x + 0.05 + hash(ti, bb * 7 + 1) * 0.9, pz = y + 0.05 + hash(ti, bb * 7 + 2) * 0.9;
+            place(ti, bb, px, pz, count);
+            c.extra.setMatrixAt(ne, m); c.extra.setColorAt(ne, color); ne++;
+          }
         }
       }
     }
     c.mesh.count = n;
     c.bunch.count = nb;
-    for (const mm of [c.mesh, c.bunch]) {
+    c.extra.count = ne;
+    for (const mm of [c.mesh, c.bunch, c.extra]) {
       mm.instanceMatrix.needsUpdate = true;
       if (mm.instanceColor) mm.instanceColor.needsUpdate = true;
     }
@@ -259,10 +308,12 @@ export class PileView {
     }
     for (const c of this.chunks) {
       // Einzelne 3D-Bananen nur in der Nähe – weiter weg reicht die Bananen-Textur
-      const vis = this.instancesVisible && c.center.distanceTo(camPos) < Math.min(42, this.lodDistance * 0.45);
+      const dist = c.center.distanceTo(camPos);
+      const vis = this.instancesVisible && dist < Math.min(42, this.lodDistance * 0.45);
       if (vis && !c.mesh.visible && c.dirty) this.rebuildChunk(c);
       c.mesh.visible = vis;
       c.bunch.visible = vis;
+      c.extra.visible = vis && dist < Math.min(20, this.lodDistance * 0.22);
     }
   }
 

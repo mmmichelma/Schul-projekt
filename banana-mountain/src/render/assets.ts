@@ -54,6 +54,7 @@ export interface BananaOpts {
   stem?: string;
   stripes?: string; // Glasur-Streifen
   radial?: number;  // Punkte rund um den Querschnitt
+  green?: number;   // wie grün der Hals ist (0..1)
 }
 
 /*
@@ -111,7 +112,7 @@ export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
       else if (t > 0.86) c.copy(stem);
       else {
         c.copy(Math.cos(5 * a) > 0.93 && !plain ? ridge : body);
-        if (!plain && t > 0.6) c.lerp(green, Math.min(1, (t - 0.6) / 0.26) * 0.75);
+        if (!plain && t > 0.66) c.lerp(green, Math.min(1, (t - 0.66) / 0.2) * (o.green ?? 0.75));
         if (!plain && t < 0.07) c.lerp(tip, (0.07 - t) / 0.07 * 0.4);
         if (stripes && Math.floor(t * 9) % 2 === 0) c.copy(stripes);
         if (!plain && rnd(i * 31 + k * 7) < 0.025) c.lerp(speck, 0.5);
@@ -133,9 +134,11 @@ export function bananaGeometry(o: BananaOpts = {}): THREE.BufferGeometry {
     col.push(color.r, color.g, color.b);
     for (let k = 0; k < radial; k++) {
       const a = ring * radial + k, b = ring * radial + ((k + 1) % radial);
-      if (flip) idx.push(ci, b, a); else idx.push(ci, a, b);
+      if (flip) idx.push(ci, a, b); else idx.push(ci, b, a); // wird unten mit umgedreht
     }
   }
+  // Dreiecke nach außen drehen (sonst sieht man die Innenseite)
+  for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -157,8 +160,8 @@ export function bananaBunchGeometry(n = 4, o: BananaOpts = {}): THREE.BufferGeom
     g.translate(0, (k % 2) * 0.05, 0);
     parts.push(g.toNonIndexed());
   }
-  const crown = new THREE.CylinderGeometry(0.06, 0.08, 0.2, 8).rotateZ(Math.PI / 2).translate(0.05, 0.04, 0).toNonIndexed();
-  const cc = new THREE.Color('#6a7a2c');
+  const crown = new THREE.CylinderGeometry(0.035, 0.05, 0.13, 8).rotateZ(Math.PI / 2).translate(0.03, 0.03, 0).toNonIndexed();
+  const cc = new THREE.Color('#5a5424');
   const arr = new Float32Array(crown.attributes.position.count * 3);
   for (let i = 0; i < crown.attributes.position.count; i++) { arr[i * 3] = cc.r; arr[i * 3 + 1] = cc.g; arr[i * 3 + 2] = cc.b; }
   crown.setAttribute('color', new THREE.BufferAttribute(arr, 3));
@@ -517,83 +520,119 @@ export function beltTexture(accent: string, arrows = true) {
 }
 
 export function bananaPileTexture() {
-  return canvasTexture(1024, 1024, (ctx) => {
+  const S = 1024;
+  return canvasTexture(S, S, (ctx) => {
     const r = rand(42);
-    ctx.fillStyle = '#c99812';
-    ctx.fillRect(0, 0, 1024, 1024);
-    // Eine Banane: Halbmond mit Kante, Lichtkante, brauner Spitze und grünlichem Stiel
-    const banana = (x: number, y: number, a: number, L: number, ripe: number) => {
+    // Tiefe Lücken zwischen den Bananen: dunkel, warm
+    ctx.fillStyle = '#33240a';
+    ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 4000; i++) {
+      ctx.fillStyle = `rgba(${90 + r() * 60},${60 + r() * 40},${10 + r() * 15},0.35)`;
+      ctx.fillRect(r() * S, r() * S, 2 + r() * 4, 2 + r() * 4);
+    }
+    // Eine Banane mit weicher Schattierung (kein Comic-Umriss)
+    const banana = (x: number, y: number, a: number, L: number, ripe: number, light: number) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(a);
-      const W = L * 0.2;
-      // Schatten
-      ctx.fillStyle = 'rgba(40,25,0,0.45)';
-      ctx.beginPath();
-      ctx.moveTo(-L / 2 + 3, 4);
-      ctx.quadraticCurveTo(0, -L * 0.28 + 4, L / 2 + 3, 4);
-      ctx.quadraticCurveTo(0, -L * 0.28 + W * 2 + 4, -L / 2 + 3, 4);
-      ctx.fill();
-      // Körper
-      const g = ctx.createLinearGradient(0, -L * 0.25, 0, W);
-      const top = ripe < 0.12 ? '#e9ec7a' : '#fff27a';
-      const mid = ripe < 0.12 ? '#c9d23a' : ripe > 0.9 ? '#e9b52a' : '#ffd21f';
-      g.addColorStop(0, top);
-      g.addColorStop(0.55, mid);
-      g.addColorStop(1, '#b88a08');
+      const W = L * 0.2, bow = L * 0.26;
+      const shape = () => {
+        ctx.beginPath();
+        ctx.moveTo(-L / 2, 0);
+        ctx.quadraticCurveTo(0, -bow * 2, L / 2, 0);
+        ctx.quadraticCurveTo(0, -bow * 2 + W * 2.1, -L / 2, 0);
+        ctx.closePath();
+      };
+      // weicher Schlagschatten auf die Bananen darunter
+      ctx.shadowColor = 'rgba(25,14,0,0.7)';
+      ctx.shadowBlur = L * 0.09;
+      ctx.shadowOffsetX = L * 0.02;
+      ctx.shadowOffsetY = L * 0.035;
+      // Grundfarbe nach Reife: grünlich – gelb – goldgelb mit Flecken
+      const base = ripe < 0.1 ? [200, 200, 60] : ripe < 0.75 ? [255, 204, 28] : [240, 178, 26];
+      const k = light;
+      const rgb = (f: number, add = 0) => `rgb(${Math.min(255, base[0] * f * k + add)},${Math.min(255, base[1] * f * k + add)},${Math.min(255, base[2] * f * k + add * 0.6)})`;
+      // Querschnitt rund: oben hell (Licht), unten dunkel
+      const g = ctx.createLinearGradient(0, -bow, 0, -bow + W * 1.9);
+      g.addColorStop(0, rgb(0.7));
+      g.addColorStop(0.3, rgb(0.98, 10));
+      g.addColorStop(0.45, rgb(1.0, 22));
+      g.addColorStop(0.72, rgb(0.8));
+      g.addColorStop(1, rgb(0.42));
       ctx.fillStyle = g;
-      ctx.strokeStyle = 'rgba(95,60,0,0.75)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-L / 2, 0);
-      ctx.quadraticCurveTo(0, -L * 0.3, L / 2, 0);
-      ctx.quadraticCurveTo(0, -L * 0.3 + W * 2, -L / 2, 0);
-      ctx.closePath();
+      shape();
       ctx.fill();
-      ctx.stroke();
-      // Kante (Rippe)
-      ctx.strokeStyle = 'rgba(150,105,0,0.55)';
-      ctx.lineWidth = 1.5;
+      ctx.shadowColor = 'transparent';
+      // zu den Enden hin dunkler (Rundung)
+      const e = ctx.createLinearGradient(-L / 2, 0, L / 2, 0);
+      e.addColorStop(0, 'rgba(60,35,0,0.55)');
+      e.addColorStop(0.14, 'rgba(60,35,0,0)');
+      e.addColorStop(0.8, 'rgba(60,35,0,0)');
+      e.addColorStop(1, 'rgba(70,80,0,0.45)');
+      ctx.fillStyle = e;
+      shape();
+      ctx.fill();
+      // feine Längskante
+      ctx.strokeStyle = 'rgba(120,80,0,0.28)';
+      ctx.lineWidth = Math.max(1, L * 0.012);
       ctx.beginPath();
-      ctx.moveTo(-L / 2 + 6, -1);
-      ctx.quadraticCurveTo(0, -L * 0.3 + W * 0.9, L / 2 - 8, -1);
+      ctx.moveTo(-L / 2 + L * 0.08, -2);
+      ctx.quadraticCurveTo(0, -bow * 2 + W * 1.25, L / 2 - L * 0.1, -2);
       ctx.stroke();
-      // Glanz
-      ctx.strokeStyle = 'rgba(255,255,220,0.65)';
-      ctx.lineWidth = 2.5;
+      // Glanzlicht
+      ctx.strokeStyle = 'rgba(255,250,210,0.35)';
+      ctx.lineWidth = L * 0.025;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(-L / 4, -L * 0.1);
-      ctx.quadraticCurveTo(0, -L * 0.2, L / 4, -L * 0.1);
+      ctx.moveTo(-L * 0.25, -bow * 0.62);
+      ctx.quadraticCurveTo(0, -bow * 0.95, L * 0.22, -bow * 0.6);
       ctx.stroke();
-      // Flecken bei reifen Bananen
-      if (ripe > 0.7) {
-        ctx.fillStyle = 'rgba(110,65,10,0.6)';
-        for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.arc((r() - 0.5) * L * 0.6, -L * 0.1 + r() * W * 0.8, 1.2 + r() * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      // braune Zuckerflecken bei reifen Bananen
+      if (ripe > 0.6) {
+        const n = ripe > 0.85 ? 14 : 6;
+        for (let i = 0; i < n; i++) {
+          const t = (r() - 0.5) * 0.75;
+          ctx.fillStyle = `rgba(${80 + r() * 30},${45 + r() * 20},10,${0.35 + r() * 0.4})`;
+          ctx.beginPath();
+          ctx.arc(t * L, -bow * 2 * (1 - 4 * t * t) * 0.5 + W * (0.3 + r() * 0.5) * 0.9, L * (0.008 + r() * 0.012), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
-      // Spitze und Stiel
-      ctx.fillStyle = '#3a2610';
-      ctx.beginPath(); ctx.ellipse(-L / 2, 0, 3.2, 2.6, a, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#7a8a30';
-      ctx.fillRect(L / 2 - 2, -3, 9, 5);
-      ctx.fillStyle = '#4a3a18';
-      ctx.fillRect(L / 2 + 6, -3, 3, 5);
+      // Blütenspitze (dunkel) und Stiel (grünbraun mit Schnittkante)
+      ctx.fillStyle = '#2e1d0a';
+      ctx.beginPath(); ctx.ellipse(-L / 2 + L * 0.01, -1, L * 0.022, L * 0.03, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.translate(L / 2 - L * 0.02, -2);
+      ctx.rotate(-0.35);
+      ctx.fillStyle = ripe < 0.1 ? '#7f8f2e' : '#8a7a32';
+      ctx.fillRect(0, -L * 0.022, L * 0.11, L * 0.044);
+      ctx.fillStyle = '#3d2c12';
+      ctx.fillRect(L * 0.1, -L * 0.024, L * 0.025, L * 0.048);
+      ctx.restore();
       ctx.restore();
     };
-    // Mehrere Lagen, damit es wie ein Haufen aussieht
-    for (let layer = 0; layer < 3; layer++) {
-      const n = [260, 260, 200][layer];
-      for (let i = 0; i < n; i++) {
-        const x = r() * 1024, y = r() * 1024, a = r() * Math.PI * 2, L = 70 + r() * 40;
-        const ripe = r();
-        if (r() < 0.25) {
-          // Büschel aus 3–4 Bananen
-          const k = 3 + Math.floor(r() * 2);
-          for (let j = 0; j < k; j++) banana(x + Math.cos(a) * j * 9, y + Math.sin(a) * j * 9, a + (j - k / 2) * 0.12, L, ripe);
+    // nahtlos kachelbar: Bananen am Rand auch auf der anderen Seite zeichnen
+    const wrapped = (x: number, y: number, L: number, fn: (x: number, y: number) => void) => {
+      for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+        const xx = x + dx, yy = y + dy;
+        if (xx > -L && xx < S + L && yy > -L && yy < S + L) fn(xx, yy);
+      }
+    };
+    // Lagen von unten (dunkler, im Schatten) nach oben (hell)
+    const layers = [{ n: 300, light: 0.45 }, { n: 300, light: 0.65 }, { n: 260, light: 0.85 }, { n: 170, light: 1.0 }];
+    for (const layer of layers) {
+      for (let i = 0; i < layer.n; i++) {
+        const x = r() * S, y = r() * S, a = r() * Math.PI * 2, L = 110 + r() * 60;
+        const ripe = r(), light = layer.light * (0.92 + r() * 0.12);
+        if (r() < 0.22) {
+          const k = 3 + Math.floor(r() * 3);
+          for (let j = 0; j < k; j++) {
+            const bx = x + Math.cos(a + Math.PI / 2) * (j - k / 2) * L * 0.13, by = y + Math.sin(a + Math.PI / 2) * (j - k / 2) * L * 0.13;
+            wrapped(bx, by, L, (xx, yy) => banana(xx, yy, a + (j - k / 2) * 0.09, L, ripe, light));
+          }
         } else {
-          banana(x, y, a, L, ripe);
+          wrapped(x, y, L, (xx, yy) => banana(xx, yy, a, L, ripe, light));
         }
-        // nahtlos kachelbar: am Rand wiederholen
-        if (x < 60 || x > 964 || y < 60 || y > 964) banana((x + 512) % 1024 - (x > 512 ? 0 : 0), y, a, L, ripe);
       }
     }
   });
