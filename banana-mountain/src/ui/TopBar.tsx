@@ -3,7 +3,7 @@ import { TOTAL, PHASES } from '../sim/defs';
 import { fmtInt, fmtNum, fmtPct, formatMoney } from './format';
 import { IconCoin, IconBanana, IconGauge, IconBolt, IconChart, IconMenu, IconUsers, IconGear, IconWalk, IconMap } from './Icons';
 
-export function TopBar({ engine, onStats, onMenu, onFriends, onSettings }: { engine: Engine; onStats: () => void; onMenu: () => void; onFriends: () => void; onSettings: () => void }) {
+export function TopBar({ engine, onStats, onMenu, onFriends, onSettings, onRoom }: { engine: Engine; onStats: () => void; onMenu: () => void; onFriends: () => void; onSettings: () => void; onRoom: () => void }) {
   const sim = engine.sim;
   const r = sim.rates();
   const progress = sim.stats.sold / TOTAL;
@@ -32,7 +32,13 @@ export function TopBar({ engine, onStats, onMenu, onFriends, onSettings }: { eng
         <button className={'icon-btn view-btn' + (engine.view === 'walk' ? ' walk' : '')} onClick={() => engine.toggleView()} title="Ansicht wechseln (V)">
           {engine.view === 'walk' ? <><IconMap /><span className="hide-sm">Bau-Ansicht</span></> : <><IconWalk /><span className="hide-sm">Laufen</span></>}
         </button>
-        {engine.mode !== 'offline' && (
+        {(import.meta.env.VITE_SOLO === '1' || engine.roomMode) && (
+          <button className={'icon-btn' + (engine.roomMode ? ' live' : '')} onClick={onRoom} title="Mehrspieler">
+            <IconUsers /><span className="hide-sm">Mehrspieler</span>
+            {!engine.roomMode && engine.roomGames.length > 0 && <em className="badge">{engine.roomGames.length}</em>}
+          </button>
+        )}
+        {engine.mode !== 'offline' && !engine.roomMode && (
           <button className="icon-btn" onClick={onFriends} title="Freunde">
             <IconUsers /><span className="hide-sm">Freunde</span>
             {engine.net.friends.filter((f) => f.status === 'incoming').length > 0 && <em className="badge">{engine.net.friends.filter((f) => f.status === 'incoming').length}</em>}

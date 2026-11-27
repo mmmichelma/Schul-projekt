@@ -6,7 +6,7 @@ import { fmtInt, fmtNum, fmtPct, fmtTime, formatMoney } from './format';
 import { IconClose, IconSound, IconMute } from './Icons';
 import { isMuted, setMuted } from './sound';
 
-function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="modal-bg" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={'modal' + (wide ? ' wide' : '')}>

@@ -344,3 +344,14 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 
   .hint { top: 104px; }
   .players { top: 104px; }
 }
+
+/* Browser-Mehrspieler */
+.room { display: flex; flex-direction: column; gap: 10px; }
+.room h4 { margin: 6px 0 0; }
+.room-name { display: flex; flex-direction: column; gap: 4px; font-size: 13px; opacity: .95; }
+.room-name span { display: flex; gap: 6px; }
+.room-name input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.25); color: inherit; font: inherit; }
+.room-list { display: flex; flex-direction: column; gap: 6px; }
+.room-game { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.06); }
+.room-game small { opacity: .7; margin-left: 6px; }
+.icon-btn.live { box-shadow: inset 0 0 0 2px #46ff7a; }

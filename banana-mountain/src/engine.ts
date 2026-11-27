@@ -6,7 +6,8 @@ import { startMusic, setVolumes, setFactoryActivity } from './ui/music';
 import { sfx } from './ui/sound';
 import { Sim, Blueprint, rotatedSize, Ent, LOCAL, Manual, inputCells } from './sim/sim';
 import { Cmd, applyCmd, validCmd, simHash } from './sim/commands';
-import { Online, WorldLink, OnlineUser } from './net/online';
+import { Online, OnlineUser } from './net/online';
+import { Link, RoomLink, RoomMe, RoomGame, Lobby, getRoom, whoAmI, joinRoom, newCode, setNick } from './net/room';
 import { BUILDINGS, BELT_TIERS, DT, DX, DY, ManualUpgradeId, STAGES } from './sim/defs';
 import { GameRenderer, QUALITIES } from './render/world';
 import { saveGame, loadGame, exportFile, readFile, deleteGame } from './storage/idb';
@@ -82,7 +83,15 @@ export class Engine {
   chat: ChatLine[] = [];
   cursors = new Map<string, Cursor>();
   syncing = false;           // Gast wartet auf den Spielstand des Gastgebers
-  private link: WorldLink | null = null;
+  private link: Link | null = null;
+  // Browser-Mehrspieler (claude.ai-Seite)
+  roomMode = false;
+  roomMe: RoomMe | null = null;
+  roomCode = '';
+  roomAvailable: boolean | null = null; // null = wird noch geprüft
+  lobby: Lobby | null = null;
+  get roomGames(): RoomGame[] { return this.lobby ? this.lobby.games : []; }
+  private get myName(): string | null { return this.roomMode ? this.roomMe?.name ?? null : this.net.me?.name ?? null; }
   private epoch = 0;
   private pending: { pid: string; cmd: Cmd }[] = [];
   private outCmds: [number, string, Cmd][] = [];
@@ -212,8 +221,106 @@ export class Engine {
     this.emit();
   }
 
+  // ================================================================ Browser-Mehrspieler
+  async initRoom() {
+    const room = await getRoom();
+    this.roomAvailable = !!room;
+    if (room) {
+      this.roomMe = await whoAmI();
+      this.lobby = new Lobby(room, () => this.emit());
+      room.presence({ id: this.roomMe.id, name: this.roomMe.name }).catch(() => {});
+    }
+    this.emit();
+  }
+
+  setRoomName(name: string) {
+    setNick(name);
+    whoAmI().then((me) => { this.roomMe = me; this.emit(); });
+  }
+
+  private announceGame(n: number) {
+    if (!this.lobby || !this.roomMe) return;
+    this.lobby.announce(this.mode === 'host' && this.roomMode ? { code: this.roomCode, name: this.roomMe.name, owner: this.roomMe.id, n } : null);
+  }
+
+  // Eigene Fabrik für Freunde öffnen
+  async hostRoom() {
+    if (!this.roomMe || this.roomMode) return;
+    const me = this.roomMe;
+    const sim = this.sim;
+    await this.save();
+    const code = newCode();
+    const room = await joinRoom(code);
+    if (sim.manuals[LOCAL] && !sim.manuals[me.id]) { sim.manuals[me.id] = sim.manuals[LOCAL]; delete sim.manuals[LOCAL]; }
+    this.roomMode = true;
+    this.roomCode = code;
+    this.mode = 'host';
+    this.pid = me.id;
+    this.epoch = Date.now() % 1e9;
+    this.worldOwner = me.id;
+    this.worldOwnerName = me.name;
+    this.pending = [];
+    this.outCmds = [];
+    this.link = new RoomLink(room, true, me, me.id, { ...this.hostHandlers(), denied: () => {
+      this.toast('Du darfst auf dieser Seite keine Partie eröffnen (Bearbeiten-Rechte nötig).', 'bad');
+      this.leaveRoom();
+    } }, (p) => this.onPlayers(p), () => {});
+    this.announceGame(1);
+    this.toast('Deine Fabrik ist offen – Freunde können jetzt beitreten!', 'good');
+    this.emit();
+  }
+
+  // Bei einem Freund mitspielen
+  async joinRoomGame(g: RoomGame) {
+    if (!this.roomMe) return;
+    if (this.roomMode) await this.leaveRoom(false);
+    await this.save();
+    const room = await joinRoom(g.code);
+    this.roomMode = true;
+    this.roomCode = g.code;
+    this.mode = 'guest';
+    this.pid = this.roomMe.id;
+    this.worldOwner = g.owner;
+    this.worldOwnerName = g.name;
+    this.syncing = true;
+    this.epoch = 0;
+    this.gCmds.clear();
+    this.hostTick = 0;
+    this.hostHash = null;
+    this.ownerMissing = 0;
+    this.lastResync = -1e9;
+    this.link = new RoomLink(room, false, this.roomMe, g.owner, this.guestHandlers(), (p) => this.onPlayers(p), () => this.requestResync(true));
+    this.toast(`Verbinde mit der Fabrik von ${g.name} …`);
+    // Antwortet niemand, zurück
+    const code = g.code;
+    setTimeout(() => { if (this.roomCode === code && this.syncing && this.mode === 'guest') this.goHome('Der Gastgeber antwortet nicht.'); }, 20000);
+    this.emit();
+  }
+
+  // Zurück in die eigene Fabrik (allein)
+  async leaveRoom(reload = true) {
+    if (!this.roomMode) return;
+    const wasHost = this.mode === 'host';
+    if (wasHost) {
+      const m = this.sim.manuals[this.pid];
+      if (m && this.pid !== LOCAL) { this.sim.manuals[LOCAL] = m; delete this.sim.manuals[this.pid]; }
+      this.pid = LOCAL;
+      this.mode = 'offline';
+      await this.save();
+      this.mode = 'host';
+    }
+    await this.leaveWorld();
+    this.roomMode = false;
+    this.roomCode = '';
+    this.announceGame(0);
+    if (!reload) return;
+    if (wasHost) { this.mode = 'offline'; this.pid = LOCAL; this.emit(); return; }
+    await this.startOffline();
+  }
+
   async goHome(reason?: string) {
     if (reason) this.toast(reason, 'bad');
+    if (this.roomMode) { await this.leaveRoom(); return; }
     await this.startOnline();
   }
 
@@ -242,6 +349,7 @@ export class Engine {
   }
 
   private onPlayers(p: OnlineUser[]) {
+    if (this.roomMode && this.mode === 'host' && p.length !== this.players.length) this.announceGame(p.length);
     this.players = p;
     this.emit();
   }
@@ -265,6 +373,7 @@ export class Engine {
     if (now - this.lastSyncServe < 800) return;
     this.lastSyncServe = now;
     const data = this.sim.serialize();
+    if (this.roomMode) { this.link?.send('sync', { e: this.epoch, t: data.tick, d: data }); return; }
     try {
       await this.net.saveWorld(data);
       this.lastSaved = Date.now();
@@ -295,7 +404,11 @@ export class Engine {
         this.hostTick = Math.max(this.hostTick, p.t);
         if (typeof p.h === 'string') this.hostHash = [p.t, p.h];
       },
-      sync: (p) => { if (p && (this.syncing || p.e !== this.epoch)) this.loadSnapshot(p.e); },
+      sync: (p) => {
+        if (!p || !(this.syncing || p.e !== this.epoch)) return;
+        if (this.roomMode) { if (p.d && typeof p.e === 'number') this.applySnapshot(p.e, p.d); }
+        else this.loadSnapshot(p.e);
+      },
       bye: () => { if (this.mode === 'guest') this.goHome(`${this.worldOwnerName} hat die Fabrik verlassen – zurück in deine eigene.`); },
       cursor: (p) => this.onCursor(p),
       chat: (p) => this.onChat(p),
@@ -315,7 +428,16 @@ export class Engine {
     try {
       const data = await this.net.loadWorld(this.worldOwner);
       if (!data || this.mode !== 'guest') return;
-      const sim = Sim.deserialize(data);
+      this.applySnapshot(epoch, data);
+    } catch (e) {
+      this.goHome('Beitreten nicht möglich: ' + (e as Error).message);
+    }
+  }
+
+  private applySnapshot(epoch: number, data: unknown) {
+    try {
+      if (this.mode !== 'guest') return;
+      const sim = Sim.deserialize(data as Parameters<typeof Sim.deserialize>[0]);
       if (epoch !== this.epoch) { this.gCmds.clear(); this.epoch = epoch; }
       for (const t of [...this.gCmds.keys()]) if (t <= sim.tick) this.gCmds.delete(t);
       this.hostTick = Math.max(this.hostTick, sim.tick);
@@ -362,9 +484,10 @@ export class Engine {
   }
   sendChat(text: string) {
     text = text.trim().slice(0, 200);
-    if (!text || !this.link || !this.net.me) return;
-    this.link.send('chat', { name: this.net.me.name, text });
-    this.chat = [...this.chat.slice(-30), { id: ++this.chatId, name: this.net.me.name, text, mine: true }];
+    const me = this.myName;
+    if (!text || !this.link || !me) return;
+    this.link.send('chat', { name: me, text });
+    this.chat = [...this.chat.slice(-30), { id: ++this.chatId, name: me, text, mine: true }];
     this.emit();
   }
 
@@ -531,7 +654,7 @@ export class Engine {
     if (this.saving || !this.loaded) return; // vor dem Start nichts überschreiben
     this.saving = true;
     try {
-      if (this.mode === 'offline') await saveGame(this.sim.serialize());
+      if (this.mode === 'offline' || (this.mode === 'host' && this.roomMode)) await saveGame(this.sim.serialize());
       else if (this.mode === 'host') await this.net.saveWorld(this.sim.serialize());
       if (this.mode !== 'guest') this.lastSaved = Date.now();
     } catch (e) {
@@ -722,9 +845,9 @@ export class Engine {
     this.checkStation();
     // Mitspieler sehen dich laufen
     const now = performance.now();
-    if (this.link && this.net.me && this.players.length > 1 && now - this.lastAvatarSend > 100) {
+    if (this.link && this.myName && this.players.length > 1 && now - this.lastAvatarSend > 100) {
       this.lastAvatarSend = now;
-      this.link.send('cursor', { pid: this.pid, name: this.net.me.name, x: p.x, z: p.z, y: p.y, yaw: p.yaw, walk: true, hold: this.myManual().slots.length > 0 });
+      this.link.send('cursor', { pid: this.pid, name: this.myName, x: p.x, z: p.z, y: p.y, yaw: p.yaw, walk: true, hold: this.myManual().slots.length > 0 });
     }
   }
 
@@ -1088,9 +1211,9 @@ export class Engine {
     }
     const tile = this.r.pickTile(e.clientX, e.clientY);
     const changed = !tile || !this.hover || tile.x !== this.hover.x || tile.y !== this.hover.y;
-    if (tile && changed && this.link && this.net.me && this.players.length > 1 && performance.now() - this.lastCursor > 150) {
+    if (tile && changed && this.link && this.myName && this.players.length > 1 && performance.now() - this.lastCursor > 150 && this.view !== 'walk') {
       this.lastCursor = performance.now();
-      this.link.send('cursor', { pid: this.pid, name: this.net.me.name, x: tile.x + 0.5, z: tile.y + 0.5 });
+      this.link.send('cursor', { pid: this.pid, name: this.myName, x: tile.x + 0.5, z: tile.y + 0.5 });
     }
     this.hover = tile;
     if (this.gesture === 'beltDrag' && tile) this.extendPath(tile);

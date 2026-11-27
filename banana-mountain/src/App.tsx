@@ -12,6 +12,7 @@ import { sfx } from './ui/sound';
 import { StartScreen, FriendsModal, PlayersBar, ChatBox } from './ui/OnlineUI';
 import { SettingsModal } from './ui/Settings';
 import { TouchControls } from './ui/Touch';
+import { RoomModal } from './ui/RoomUI';
 
 export const SOLO = import.meta.env.VITE_SOLO === '1';
 const engine = new Engine();
@@ -20,7 +21,7 @@ const engine = new Engine();
 export default function App() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
-  const [modal, setModal] = useState<'none' | 'stats' | 'menu' | 'friends' | 'settings'>('none');
+  const [modal, setModal] = useState<'none' | 'stats' | 'menu' | 'friends' | 'settings' | 'room'>('none');
   const [needLogin, setNeedLogin] = useState(false);
   const [endSeen, setEndSeen] = useState(false);
   const [hideHint, setHideHint] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function App() {
     engine.attach(canvas.current);
     // Solo-Version (ohne Server): direkt offline starten
     if (SOLO) {
-      engine.startOffline().then(() => { if (alive) setReady(true); });
+      engine.startOffline().then(() => { if (alive) setReady(true); engine.initRoom(); });
       return () => { alive = false; engine.detach(); };
     }
     // Angemeldet geblieben? Dann direkt in die eigene Fabrik
@@ -74,7 +75,7 @@ export default function App() {
       )}
       {ready && (
         <>
-          <TopBar engine={engine} onStats={() => setModal('stats')} onMenu={() => setModal('menu')} onFriends={() => setModal('friends')} onSettings={() => setModal('settings')} />
+          <TopBar engine={engine} onStats={() => setModal('stats')} onMenu={() => setModal('menu')} onFriends={() => setModal('friends')} onSettings={() => setModal('settings')} onRoom={() => setModal('room')} />
           <TouchControls engine={engine} />
           <PlayersBar engine={engine} />
           <ChatBox engine={engine} />
@@ -103,6 +104,7 @@ export default function App() {
           {modal === 'stats' && <StatsModal engine={engine} onClose={() => setModal('none')} />}
           {modal === 'menu' && <MenuModal engine={engine} onClose={() => setModal('none')} onSettings={() => setModal('settings')} onLogout={() => { setModal('none'); setReady(false); engine.logout().then(() => setNeedLogin(true)); }} />}
           {modal === 'friends' && <FriendsModal engine={engine} onClose={() => setModal('none')} />}
+          {modal === 'room' && <RoomModal engine={engine} onClose={() => setModal('none')} />}
           {modal === 'settings' && <SettingsModal engine={engine} onClose={() => setModal('none')} />}
           {sim.finished && !endSeen && <EndScreen engine={engine} onClose={() => setEndSeen(true)} />}
         </>
