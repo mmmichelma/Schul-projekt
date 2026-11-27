@@ -56,7 +56,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
 
   const onDown = (e: React.PointerEvent) => {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    if (!m.slots.length) { if (engine.grabFromPile()) sfx.grab(); return; }
+    if (!m.slots.length) { engine.grabFromPile(); return; }
     drag.current = { y: e.clientY, id: e.pointerId };
   };
   const onMove = (e: React.PointerEvent) => {
@@ -74,7 +74,7 @@ export function PeelPanel({ engine }: { engine: Engine }) {
   const peeled = m.slots.filter((s) => s.mask === 7).length;
   const raw = m.slots.length - peeled;
   const hint = !m.slots.length
-    ? 'Klicke auf den Bananenberg (oder hier), um eine Banane zu nehmen.'
+    ? (engine.pileNear ? 'Drück E (oder klick hier), um eine Banane zu nehmen.' : 'Lauf zum Bananenberg, um eine Banane zu nehmen.')
     : peeled === m.slots.length
       ? (engine.stationNear ? 'Fertig geschält! Jetzt verkaufen (E).' : 'Fertig geschält! Bring sie zur Bananen-Base.')
       : 'Ziehe die Schale nach unten – oder drück C.';
@@ -110,7 +110,9 @@ export function PeelPanel({ engine }: { engine: Engine }) {
             <div className="peel-hint">{hint}</div>
           </div>
           <div className="peel-actions">
-            <button className="btn ghost" onClick={() => { engine.grabFromPile(); sfx.grab(); }} disabled={m.slots.length >= hands}>Banane nehmen</button>
+            <button className="btn ghost" onClick={() => engine.grabFromPile()} disabled={m.slots.length >= hands || !engine.pileNear} title={engine.pileNear ? '' : 'Lauf näher an den Bananenberg'}>
+              {engine.pileNear || m.slots.length >= hands ? 'Banane nehmen' : 'Zum Berg laufen'}
+            </button>
             <button className="btn" disabled={!m.slots.length || !engine.stationNear} onClick={() => engine.manualSellAll()} title={engine.stationNear ? '' : 'Lauf zur Bananen-Base, um zu verkaufen'}>
               {engine.stationNear ? `Verkaufen ${m.slots.length ? formatMoney(peeled * 3 + raw) : ''}` : 'Zur Base laufen'}
             </button>

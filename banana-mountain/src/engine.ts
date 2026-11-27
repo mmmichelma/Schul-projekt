@@ -732,6 +732,9 @@ export class Engine {
   private checkStation() {
     const st = this.findStation();
     if (st !== this.stationNear) { this.stationNear = st; this.emit(); }
+    // Steht die Figur nah genug am Berg zum Greifen?
+    const near = this.sim.nearestPileTile(Math.floor(this.player.x), Math.floor(this.player.z), 3) >= 0;
+    if (near !== this.pileNear) { this.pileNear = near; this.emit(); }
     const m = this.myManual();
     if (st && m.up.autosell && m.slots.some((b) => b.mask === 7) && performance.now() - this.lastAutoSell > 400) {
       this.lastAutoSell = performance.now();
@@ -750,8 +753,7 @@ export class Engine {
   grabNear() {
     const p = this.player;
     const tile = this.sim.nearestPileTile(Math.floor(p.x), Math.floor(p.z), 3);
-    if (tile < 0) { this.toast('Geh näher an den Bananenberg, um eine Banane zu nehmen.', 'bad'); return; }
-    if (this.grabFromPile(tile)) { this.r?.player.grab(); sfx.grab(); }
+    this.grabFromPile(tile < 0 ? -1 : tile);
   }
 
   // ---------------------------------------------------------------- Werkzeuge & Aktionen
@@ -855,6 +857,7 @@ export class Engine {
 
   // Verkaufsstation in Reichweite der Figur (Abstand zur Grundfläche)
   stationNear = 0;
+  pileNear = false;
   private findStation(): number {
     const p = this.player;
     let best = 0, bd = 2.3;
@@ -876,10 +879,18 @@ export class Engine {
     if (cost === null || this.sim.money < cost) { this.toast('Nicht genug Geld.', 'bad'); return; }
     this.run({ k: 'buyHand', id });
   }
-  grabFromPile(tile = -1) {
+  // Banane nehmen – nur wenn die Figur nah am Berg steht (Knopf, E, Leertaste und Klick)
+  grabFromPile(tile = -1): boolean {
     if (this.myManual().slots.length >= this.myHands()) { this.toast('Deine Hände sind voll – erst schälen!', 'bad'); return false; }
     if (this.sim.pileRemaining <= 0) { this.toast('Keine Bananen mehr im Berg.', 'bad'); return false; }
+    const p = this.player;
+    if (tile < 0) tile = this.sim.nearestPileTile(Math.floor(p.x), Math.floor(p.z), 3);
+    if (tile < 0) { this.toast('Geh näher an den Bananenberg, um eine Banane zu nehmen.', 'bad'); return false; }
+    const tx = (tile % 128) + 0.5, tz = Math.floor(tile / 128) + 0.5;
+    if (Math.hypot(tx - p.x, tz - p.z) > 6) { this.toast('Zu weit weg – lauf näher an den Berg.', 'bad'); return false; }
     this.run({ k: 'take', tile });
+    this.r?.player.grab();
+    sfx.grab();
     return true;
   }
   setFilter(id: number, stage: number) { this.run({ k: 'filter', id, stage }); }
@@ -1111,12 +1122,6 @@ export class Engine {
     }
     const tile = r.pickPile(e.clientX, e.clientY);
     if (tile >= 0) {
-      if (this.view === 'walk') {
-        const tx = tile % 128 + 0.5, tz = Math.floor(tile / 128) + 0.5;
-        if (Math.hypot(tx - this.player.x, tz - this.player.z) > 6) { this.toast('Zu weit weg – lauf näher an den Berg.', 'bad'); return; }
-        if (this.grabFromPile(tile)) { r.player.grab(); sfx.grab(); }
-        return;
-      }
       this.grabFromPile(tile);
       return;
     }
