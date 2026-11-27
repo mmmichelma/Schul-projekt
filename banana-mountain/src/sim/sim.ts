@@ -678,6 +678,80 @@ export class Sim {
     return true;
   }
 
+  // ---------------------------------------------------------------- Demo: Greifarm + Förderband zur Base
+  // Sucht einen Platz am Berg nahe der Base, schenkt genau das nötige Geld und baut die Linie.
+  // Rückgabe: Position des Greifarms oder null
+  buildDemoLine(): { x: number; y: number; cost: number } | null {
+    const base = this.buildingList().find((b) => b.type === 'base') || this.buildingList().find((b) => BUILDINGS[b.type].category === 'sell');
+    if (!base) return null;
+    const def = BUILDINGS.grab1;
+    const R = def.radius!;
+    const isTarget = (x: number, y: number) => {
+      for (let d = 0; d < 4; d++) { const e = this.entAt(x + DX[d], y + DY[d]); if (e && e.id === base.id) return d; }
+      return -1;
+    };
+    // Kandidaten nach Abstand zur Base sortiert
+    const cand: [number, number, number, number][] = [];
+    const bx = base.x + base.w / 2, by = base.y + base.h / 2;
+    for (let y = Math.max(0, base.y - 18); y < Math.min(MAP_H - 1, base.y + 18); y++) {
+      for (let x = Math.max(0, base.x - 22); x < Math.min(MAP_W - 1, base.x + 22); x++) {
+        for (let dir = 0; dir < 4; dir++) cand.push([(x - bx) ** 2 + (y - by) ** 2, x, y, dir]);
+      }
+    }
+    cand.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3]);
+    for (const [, x, y, dir] of cand) {
+      if (!this.canPlace('grab1', x, y, dir)) continue;
+      // Bananen in Reichweite?
+      const [w, h] = rotatedSize(def, dir);
+      const cx = x + w / 2, cy = y + h / 2;
+      let hasPile = false;
+      for (let ty = Math.floor(cy - R); ty <= Math.ceil(cy + R) && !hasPile; ty++) for (let tx = Math.floor(cx - R); tx <= Math.ceil(cx + R); tx++) {
+        if (inBounds(tx, ty) && this.pile[tileIndex(tx, ty)] && (tx + 0.5 - cx) ** 2 + (ty + 0.5 - cy) ** 2 <= R * R) { hasPile = true; break; }
+      }
+      if (!hasPile) continue;
+      const [ox, oy] = outputCell({ x, y, dir, type: 'grab1' });
+      const foot = new Set(this.footprint('grab1', x, y, dir).map(([fx, fy]) => tileIndex(fx, fy)));
+      const free = (fx: number, fy: number) => this.cellFree(fx, fy) && !foot.has(tileIndex(fx, fy));
+      if (!free(ox, oy)) continue;
+      // Kürzester Weg (Breitensuche) vom Ausgang bis neben die Base
+      const prev = new Map<number, number>();
+      const start = tileIndex(ox, oy);
+      prev.set(start, -1);
+      const queue = [start];
+      let goal = -1;
+      for (let qi = 0; qi < queue.length && queue.length < 4000; qi++) {
+        const c = queue[qi], cxx = c % MAP_W, cyy = (c / MAP_W) | 0;
+        if (isTarget(cxx, cyy) >= 0) { goal = c; break; }
+        if (prev.size > 25 * 25) break;
+        for (let d = 0; d < 4; d++) {
+          const nx = cxx + DX[d], ny = cyy + DY[d];
+          const ni = tileIndex(nx, ny);
+          if (!inBounds(nx, ny) || prev.has(ni) || !free(nx, ny)) continue;
+          prev.set(ni, c);
+          queue.push(ni);
+        }
+      }
+      if (goal < 0) continue;
+      const path: number[] = [];
+      for (let c = goal; c !== -1; c = prev.get(c)!) path.unshift(c);
+      if (path.length > 30) continue;
+      const cost = def.price + path.length * BELT_TIERS[0].price;
+      this.money += cost; // Geschenk: genau so viel, wie die Linie kostet
+      this.place('grab1', x, y, dir);
+      for (let i = 0; i < path.length; i++) {
+        const px = path[i] % MAP_W, py = (path[i] / MAP_W) | 0;
+        let d: number;
+        if (i < path.length - 1) {
+          const nx = path[i + 1] % MAP_W, ny = (path[i + 1] / MAP_W) | 0;
+          d = DX.findIndex((dx, k) => px + dx === nx && py + DY[k] === ny);
+        } else d = isTarget(px, py);
+        this.placeBelt(px, py, d, 0);
+      }
+      return { x, y, cost };
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------- Kopieren & Einfügen
   copy(ids: number[]): Blueprint | null {
     const list = ids.map((id) => this.ents.get(id)).filter(Boolean) as Ent[];

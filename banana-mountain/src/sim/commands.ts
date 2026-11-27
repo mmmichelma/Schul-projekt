@@ -19,6 +19,7 @@ export type Cmd =
   | { k: 'nodeCfg'; id: number; outMask?: number; prio?: boolean; mask?: number }
   | { k: 'paste'; bp: Blueprint; x: number; y: number }
   | { k: 'salvage' }
+  | { k: 'demo' }
   | { k: 'take'; tile: number }
   | { k: 'peel'; strip: number }
   | { k: 'sellHand'; station: number; peeledOnly?: boolean }
@@ -47,7 +48,7 @@ export function validCmd(c: unknown): c is Cmd {
         && bp.entries.every((e) => e && int(e.dx, 0, 500) && int(e.dy, 0, 500) && int(e.dir, 0, 3)
           && (e.belt ? int(e.tier ?? 0, 0, BELT_TIERS.length - 1) : typeof e.type === 'string' && !!BUILDINGS[e.type] && int(e.level ?? 1, 1, 10)));
     }
-    case 'salvage': return true;
+    case 'salvage': case 'demo': return true;
     case 'sellHand': return int(o.station, 1, 1e9) && (o.peeledOnly === undefined || typeof o.peeledOnly === 'boolean');
     case 'take': return int(o.tile, -1, 1e6);
     case 'peel': return int(o.strip, 0, 2);
@@ -70,6 +71,7 @@ export function applyCmd(sim: Sim, pid: string, c: Cmd): boolean {
     case 'nodeCfg': return sim.configNode(c.id, c);
     case 'paste': return sim.paste(c.bp, c.x, c.y);
     case 'salvage': return sim.sellSalvage() > 0;
+    case 'demo': return !!sim.buildDemoLine();
     case 'take': return sim.manualTake(c.tile, pid) > 0;
     case 'peel': return sim.manualPeel(c.strip, pid) > 0;
     case 'sellHand': return (c.peeledOnly ? sim.sellPeeledManual(pid, c.station) : sim.manualSellAll(pid, c.station)) > 0;

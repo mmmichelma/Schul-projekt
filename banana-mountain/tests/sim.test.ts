@@ -289,3 +289,17 @@ describe('Spielstand', () => {
     expect(() => Sim.deserialize(data)).toThrow();
   });
 });
+
+describe('Demo-Linie', () => {
+  it('baut Greifarm + Band zur Base, verkauft und hält die Bilanz', () => {
+    const sim = Sim.newGame();
+    const money0 = sim.money;
+    const r = sim.buildDemoLine();
+    expect(r).not.toBeNull();
+    expect(sim.money).toBeCloseTo(money0, 6);
+    expect(sim.buildingList().some((b) => b.type === 'grab1')).toBe(true);
+    for (let i = 0; i < 20 * 90; i++) sim.step();
+    expect(sim.stats.sold).toBeGreaterThan(0);
+    expect(sim.audit().total).toBe(TOTAL);
+  });
+});

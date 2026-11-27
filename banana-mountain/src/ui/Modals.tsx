@@ -85,6 +85,7 @@ export function MenuModal({ engine, onClose, onLogout, onSettings }: { engine: E
         <div className="account"><span>Offline-Modus (ohne Konto)</span><button className="btn small" onClick={onLogout}>Anmelden für Online</button></div>
       )}
       <div className="menu-list">
+        {engine.mode !== 'guest' && <button className="btn" onClick={() => { engine.buildDemo(); onClose(); }}>Demo: Greifarm + Förderband bauen (F8)</button>}
         <button className="btn" onClick={() => { engine.save().then(() => engine.toast('Gespeichert.', 'good')); }}>Jetzt speichern</button>
         {import.meta.env.VITE_SOLO !== '1' && <button className="btn ghost" onClick={() => engine.exportSave()}>Spielstand exportieren</button>}
         {engine.mode !== 'guest' && <button className="btn ghost" onClick={() => file.current?.click()}>Spielstand importieren</button>}

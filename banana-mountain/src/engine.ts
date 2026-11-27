@@ -821,6 +821,26 @@ export class Engine {
     if (e) this.setTool({ kind: 'move', id: e.id, dir: e.dir });
   }
 
+  // Demo: schenkt genau das Geld für Greifarm + Förderband und baut die Linie zur Base
+  buildDemo() {
+    if (this.mode === 'guest') { this.toast('Die Demo geht nur in deiner eigenen Fabrik.', 'bad'); return; }
+    const before = new Set([...this.sim.ents.values()].filter((e) => e.kind === 'building' && e.type === 'grab1').map((e) => e.id));
+    this.run({ k: 'demo' });
+    const focus = () => {
+      const g = [...this.sim.ents.values()].find((e) => e.kind === 'building' && e.type === 'grab1' && !before.has(e.id));
+      if (!g) { this.toast('Kein freier Platz für die Demo-Linie gefunden.', 'bad'); return; }
+      const base = this.sim.buildingList().find((b) => b.type === 'base');
+      this.setView('build');
+      const c = this.r?.cam;
+      if (c) {
+        c.tx = base ? (g.x + base.x + 2) / 2 : g.x; c.tz = base ? (g.y + base.y + 1.5) / 2 : g.y;
+        c.dist = 24; c.pitch = 0.9;
+      }
+      this.toast('Demo gebaut: Greifarm greift Bananen, das Förderband bringt sie zur Base und verkauft sie!', 'good');
+    };
+    if (this.mode === 'offline') focus(); else setTimeout(focus, 600);
+  }
+
   sellSalvage() {
     this.run({ k: 'salvage' });
     this.toast('Bergungskiste wird verkauft.', 'good');
@@ -1187,6 +1207,7 @@ export class Engine {
   private onKey(e: KeyboardEvent, down: boolean) {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     const k = e.key.toLowerCase();
+    if (k === 'f8') { e.preventDefault(); if (down && !e.repeat) this.buildDemo(); return; }
     if (this.view === 'walk' && k === 'e') {
       if (down && !e.repeat) {
         if (this.stationNear && this.myManual().slots.length) this.manualSellAll();
